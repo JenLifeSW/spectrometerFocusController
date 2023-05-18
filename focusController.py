@@ -1,5 +1,7 @@
 from PySide6.QtCore import QObject, Signal, Slot
 
+TAG = "     포커스 모듈 : "
+
 
 class Command:
     RESUEME = 1
@@ -8,17 +10,20 @@ class Command:
 
 
 class FocusController(QObject):
+    testing = False
+    initFocusingSignal = Signal()
+
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
     roundDataSignal = Signal(int, dict)
-    focusCompleteSignal = Signal(dict, int)
+    focusCompleteSignal = Signal(list, int)
 
     reqDeviceConnected= Signal()
     reqConnectDevice = Signal()
     reqStopDevice = Signal()
-    reqMoveStage = Signal(float)
+    reqMoveDevice = Signal(float)
 
-    errStagePosition = Signal(str)
+    errDevicePosition = Signal(str)
     errFocusingFailed = Signal(str)
 
     step = [1562.5, 1562.5, 625, 250, 50, 10]
@@ -28,48 +33,65 @@ class FocusController(QObject):
 
     isRunning = False
     isPaused = False
-    round = 0               # 현재 라운드
+    round = 1               # 현재 라운드
+    startPosition = 0.0     # 스테이지 바닥 위치
     targetPosition = 0.0     # 해당 라운드에서 측정을 시작할 위치
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
     roundData = []          # 해당 라운드에서 이동하면서 수집한 데이터 [("position": "intensity")]
 
-    def __init__(self):
+    def __init__(self, startPosition=0.0, testing=False):
         super().__init__()
-        self.initFocuing()
+        print(f"{TAG}1 init")
+        self.startPosition = startPosition
+        self.testing=testing
 
-    def initFocuing(self):
+        # self.initFocusing()
+
+    def initFocusing(self):
+        print(f"{TAG}2 initFocusing")
         self.isRunning = False
         self.isPaused = False
-        self.round = 0
+        self.round = 1
 
-        self.targetPosition = 0.0
+        self.targetPosition = self.startPosition
         self.pointCnt = 0
         self.roundData = []
+        if self.testing:
+            self.initFocusingSignal.emit()
 
     def initRound(self, targetPosition):
+        print(f"{TAG}3 initRound, targetPosition: {targetPosition}")
         self.targetPosition = targetPosition
         self.pointCnt = 0
         self.roundData = []
 
-    @Slot
+
+    @Slot()
     def resumeFocusing(self):
+        print(f"{TAG}4 resumeFocusing")
         command = Command.RESUEME
         if self.lastCommand == command:
-            self.alreadyRunningSignal.emit()
-            return
+            if self.isRunning:
+                print(f"{TAG}4 resumeFocusing, alreadyRunning")
+                self.alreadyRunningSignal.emit()
+                return
 
         self.lastCommand = command
         self.conReqCnt = 0
 
         if self.isRunning:
-            self.alreadyRunningSignal.emit()
-            return
+            if not self.isPaused:
+                print(f"{TAG}4 resumeFocusing, not Running, not Paused")
+                self.alreadyRunningSignal.emit()
+            print(f"{TAG}4 resumeFocusing, paused -> resume")
 
+        print(f"{TAG}4 resumeFocusing, reqDeviceConnected 요청")
         self.reqDeviceConnected.emit()
 
 
-    @Slot
+    @Slot()
     def pauseFocusing(self):
+        print(f"{TAG}5 pauseFocusing")
         command = Command.PAUSE
         if self.lastCommand == command:
             self.alreadyStoppedSignal.emit()
@@ -80,61 +102,78 @@ class FocusController(QObject):
             self.alreadyStoppedSignal.emit()
             return
 
+        self.isPaused = True
         self.reqStopDevice.emit()
 
-    @Slot
+    @Slot()
     def restartFocusing(self):
-        command = Command.RESTART
+        print(f"{TAG}6 restartFocusing")
+        self.lastCommand = Command.RESTART
         if self.isPaused:
             self.isPaused = False
             self.conReqCnt = 0
             self.reqDeviceConnected.emit()
             return
+
+        self.isPaused = True
         self.reqStopDevice.emit()
 
     @Slot(bool)
     def onResDeviceConnected(self, isConnected):
+        print(f"{TAG}7 onResDeviceConnected, isConnected: {isConnected}")
         if not isConnected:
+            print(f"{TAG}7 onResDeviceConnected, not Connected 연결확인횟수: {self.conReqCnt+1}")
             if self.conReqCnt < 2:
                 self.conReqCnt += 1
                 self.reqConnectDevice.emit()
             return
 
+        print(f"{TAG}7 onResDeviceConnected, isPaused: {self.isPaused}")
         if self.isPaused:
             self.isPaused = False
         else:
-            self.initFocuing()
+            self.initFocusing()
 
         self.isRunning = True
-        self.reqMoveStage.emit(self.targetPosition)
+        print(f"{TAG}7 onResDeviceConnected, reqMoveDevice 요청")
+        self.reqMoveDevice.emit(self.targetPosition)
 
-    @Slot
+    @Slot()
     def onResStopDevices(self):
-        self.isPaused = True
+        print(f"{TAG}8 onResStopDevices")
         if self.lastCommand == Command.RESTART:
-            self.isPaused = False
-            self.initFocuing()
-            self.reqMoveStage.emit(self.targetPosition)
+            self.initFocusing()
+            self.isRunning = True
+            self.reqMoveDevice.emit(self.targetPosition)
 
     @Slot(float, float)
-    def onResStageMoved(self, position, intensity):
-        self.roundData.append(position, intensity)
-        if self.pointCnt < self.targetPointCnt[self.round]:
-            self.pointCnt += 1
-            self.targetPosition = position + self.step[self.round]
-            self.reqMoveStage.emit(self.targetPosition)
+    def onResDeviceMoved(self, position, intensity):
+        print(f"{TAG}9 onResDeviceMoved position: {position} intensity: {intensity}")
+        if self.isPaused or not self.isRunning:
+            print(f"{TAG}9 onResDeviceMoved isPaused: {self.isPaused} isRunning: {self.isRunning}")
             return
 
-        if self.round < 4:
-            maxIdx = 0
-            maxIntensity = self.roundData[0][1]
-            for idx, _, intensity in enumerate(self.roundData):
-                if intensity > maxIntensity:
-                    maxIntensity = intensity
-                    maxIdx = idx
+        self.roundData.append((position, intensity))
+        if self.pointCnt < self.targetPointCnt[self.round] - 1:
+            self.pointCnt += 1
+            self.targetPosition = position + self.step[self.round]
+            print(f"{TAG}9 onResDeviceMoved next targetPosition: {self.targetPosition}")
+
+            self.reqMoveDevice.emit(self.targetPosition)
+            return
+
+        maxIdx = 0
+        maxIntensity = self.roundData[0][1]
+        for idx, data in enumerate(self.roundData):
+            if data[1] > maxIntensity:
+                maxIntensity = data[1]
+                maxIdx = idx
+
+        print(f"{TAG}9 onResDeviceMoved 라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
+        if self.round < 5:
 
             if maxIdx == 0:     # 첫번째 점이 가장 높을 경우
-                self.errStagePosition.emit("작업을 진행할 수 없습니다.")
+                self.errDevicePosition.emit("작업을 진행할 수 없습니다.")
                 return
 
             elif maxIdx == self.targetPointCnt[self.round] - 1:     # 마지막 점이 가장 높을 경우
@@ -143,12 +182,17 @@ class FocusController(QObject):
                     self.initRound(targetPosition)
                 else:                   # 라운드 0 이후면 데이터가 잘못됐으므로 다시 시작
                     self.errFocusingFailed.emit("포커싱을 다시 시작합니다")
-                    self.initFocuing()
+                    self.initFocusing()
 
                 # self.roundDataSignal.emit(self.round, self.roundData)
             else:
-                targetPosition = position - self.step[self.round]
+                targetPosition = self.roundData[maxIdx][0] - self.step[self.round]
                 self.round += 1
                 self.initRound(targetPosition)
 
-            self.reqMoveStage.emit(self.targetPosition)
+            self.reqMoveDevice.emit(self.targetPosition)
+
+        else:
+            print(f"{TAG}9 onResDeviceMoved 포커싱 완료")
+            self.isRunning = False
+            self.focusCompleteSignal.emit(self.roundData, maxIdx)
