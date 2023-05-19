@@ -153,12 +153,8 @@ class FocusController(QObject):
             self.reqMoveDevice.emit(self.targetPosition)
             return
 
-        maxIdx = 0
-        maxIntensity = self.roundData[0][1]
-        for idx, data in enumerate(self.roundData):
-            if data[1] > maxIntensity:
-                maxIntensity = data[1]
-                maxIdx = idx
+        intensities = [data[1] for data in self.roundData]
+        maxIdx = intensities.index(max(intensities))
 
         print(f"{TAG}{METHOD}라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
         if self.round < 5:
