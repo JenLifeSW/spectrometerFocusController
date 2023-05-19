@@ -65,7 +65,6 @@ class FocusController(QObject):
         self.pointCnt = 0
         self.roundData = []
 
-
     @Slot()
     def resumeFocusing(self):
         print(f"{TAG}4 resumeFocusing")
@@ -87,7 +86,6 @@ class FocusController(QObject):
 
         print(f"{TAG}4 resumeFocusing, reqDeviceConnected 요청")
         self.reqDeviceConnected.emit()
-
 
     @Slot()
     def pauseFocusing(self):
@@ -138,16 +136,8 @@ class FocusController(QObject):
         print(f"{TAG}7 onResDeviceConnected, reqMoveDevice 요청")
         self.reqMoveDevice.emit(self.targetPosition)
 
-    @Slot()
-    def onResStopDevices(self):
-        print(f"{TAG}8 onResStopDevices")
-        if self.lastCommand == Command.RESTART:
-            self.initFocusing()
-            self.isRunning = True
-            self.reqMoveDevice.emit(self.targetPosition)
-
     @Slot(float, float)
-    def onResDeviceMoved(self, position, intensity):
+    def onResMoveDevice(self, position, intensity):
         print(f"{TAG}9 onResDeviceMoved position: {position} intensity: {intensity}")
         if self.isPaused or not self.isRunning:
             print(f"{TAG}9 onResDeviceMoved isPaused: {self.isPaused} isRunning: {self.isRunning}")
@@ -196,3 +186,11 @@ class FocusController(QObject):
             print(f"{TAG}9 onResDeviceMoved 포커싱 완료")
             self.isRunning = False
             self.focusCompleteSignal.emit(self.roundData, maxIdx)
+
+    @Slot()
+    def onResStopDevice(self):
+        print(f"{TAG}8 onResStopDevices")
+        if self.lastCommand == Command.RESTART:
+            self.initFocusing()
+            self.isRunning = True
+            self.reqMoveDevice.emit(self.targetPosition)

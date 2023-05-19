@@ -1,11 +1,9 @@
 import random
 from datetime import datetime
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
-
-
 from focusController import FocusController
-from PySide6.QtCore import QObject, Signal, Slot, QThread, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QObject, Signal, Slot, QTimer
 
 TAG = "테스트 모듈 : "
 TIME = datetime.now
@@ -25,8 +23,8 @@ class FocusControllerTest(QObject):
     pauseFocusingSignal = Signal()
     restartFocusingSignal = Signal()
     resDeviceConnected = Signal(bool)
-    resStopDevice = Signal()
     resMoveDevice = Signal(float, float)
+    resStopDevice = Signal()
 
     cnt = 0
     round = 1
@@ -94,18 +92,11 @@ class FocusControllerTest(QObject):
         # self.checkDeviceTimer.setInterval(delay)
         self.checkDeviceTimer.start()
 
-
     @Slot()
     def onReqConnectDevice(self):
         print(f"{TIME()} {TAG} 기기 연결 요청 감지\n")
         # self.connectDeviceTimer.setInterval(delay)
         self.connectDeviceTimer.start()
-
-    @Slot()
-    def onReqStopDevice(self):
-        print(f"{TIME()} {TAG} 기기 중지 요청 감지\n")
-        # self.stopDeviceTimer.setInterval(delay)
-        self.stopDeviceTimer.start()
 
     @Slot(float)
     def onReqMoveDevice(self, position):
@@ -121,6 +112,12 @@ class FocusControllerTest(QObject):
         # self.moveDeviceTimer.setInterval(delay)
         self.moveDeviceTimer.start()
         # self.resDeviceMoved.emit(position, case[self.round][self.cnt-1])
+
+    @Slot()
+    def onReqStopDevice(self):
+        print(f"{TIME()} {TAG} 기기 중지 요청 감지\n")
+        # self.stopDeviceTimer.setInterval(delay)
+        self.stopDeviceTimer.start()
 
     @Slot(str)
     def onDevicePositionErr(self, errMsg):
@@ -143,6 +140,11 @@ class FocusControllerTest(QObject):
         self.connectDeviceTimer.stop()
         self.resDeviceConnected.emit()
 
+    def moveDevice(self):
+        self.moveDeviceTimer.stop()
+        print(f"{TIME()} {TAG} 스테이지 이동완료 position: {self.targetPosition}, intensity: {case[self.round][self.cnt-1]}")
+        self.resMoveDevice.emit(self.targetPosition, case[self.round][self.cnt-1])
+
     def stopDevice(self):
         print(f"{TIME()} {TAG} 기기 정지")
         self.stopDeviceTimer.stop()
@@ -152,13 +154,6 @@ class FocusControllerTest(QObject):
             if self.round > 0:
                 self.round -= 1
         self.resStopDevice.emit()
-
-    def moveDevice(self):
-        self.moveDeviceTimer.stop()
-        print(f"{TIME()} {TAG} 스테이지 이동완료 position: {self.targetPosition}, intensity: {case[self.round][self.cnt-1]}")
-        self.resMoveDevice.emit(self.targetPosition, case[self.round][self.cnt-1])
-
-
 
 # OBSERVER
 
@@ -228,8 +223,8 @@ test.resumeFocusingSignal.connect(focusController.resumeFocusing)
 test.pauseFocusingSignal.connect(focusController.pauseFocusing)
 test.restartFocusingSignal.connect(focusController.restartFocusing)
 test.resDeviceConnected.connect(focusController.onResDeviceConnected)
-test.resStopDevice.connect(focusController.onResStopDevices)
-test.resMoveDevice.connect(focusController.onResDeviceMoved)
+test.resStopDevice.connect(focusController.onResStopDevice)
+test.resMoveDevice.connect(focusController.onResMoveDevice)
 
 
 app = QApplication([])
