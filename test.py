@@ -120,7 +120,7 @@ class FocusControllerTest(QObject):
         self.stopDeviceTimer.start()
 
     @Slot(str)
-    def onDevicePositionErr(self, errMsg):
+    def onfocusDisabledErr(self, errMsg):
         print(f"{TIME()} {TAG} 에러 발생 : {errMsg}")
 
 
@@ -199,7 +199,7 @@ test = FocusControllerTest()
 # focusController.reqConnectDevice.connect(reqConnectDeviceObserver)
 # focusController.reqStopDevice.connect(reqStopDeviceObserver)
 # focusController.reqMoveDevice.connect(reqMoveDeviceObserver)
-# focusController.errDevicePosition.connect(reqMoveDeviceObserver)
+# focusController.focusDisabledErr.connect(focusDisabledErrObserver)
 #
 # test.resumeFocusingSignal.connect(resumeFocusingObserver)
 # test.pauseFocusingSignal.connect(pauseFocusingObserver)
@@ -217,7 +217,7 @@ focusController.reqDeviceConnected.connect(test.onReqDeviceConnected)
 focusController.reqConnectDevice.connect(test.onReqConnectDevice)
 focusController.reqStopDevice.connect(test.onReqStopDevice)
 focusController.reqMoveDevice.connect(test.onReqMoveDevice)
-focusController.errDevicePosition.connect(test.onDevicePositionErr)
+focusController.focusDisabledErr.connect(test.onfocusDisabledErr)
 
 test.resumeFocusingSignal.connect(focusController.resumeFocusing)
 test.pauseFocusingSignal.connect(focusController.pauseFocusing)

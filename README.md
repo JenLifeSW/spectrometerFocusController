@@ -7,8 +7,7 @@
     - initFocusingSignal()
     - alreadyRunningSignal()
     - alreadyStoppedSignal()
-    - errDevicePosition(str)
-    - errFocusingFailed(str)
+    - focusDisabledErr(str)
     - focusCompleteSignal(list, int)
 
     - reqDeviceConnected()
@@ -28,11 +27,7 @@
 
 - 이미 정지상태임을 알림
 
-#### errDevicePosition(str)
-
-- 알고리즘상 기기의 위치가 옳바르지 않음을 에러 내용과 함께 전달
-
-#### errFocusingFailed(str)
+#### focusDisabledErr
 
 - 포커싱 실패를 에러 내용과 함께 전달
 

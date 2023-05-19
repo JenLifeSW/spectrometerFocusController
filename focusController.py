@@ -23,12 +23,12 @@ class FocusController(QObject):
     reqStopDevice = Signal()
     reqMoveDevice = Signal(float)
 
-    errDevicePosition = Signal(str)
-    errFocusingFailed = Signal(str)
+    focusDisabledErr = Signal(str)
 
     step = [1562.5, 1562.5, 625, 250, 50, 10]
     targetPointCnt = [4, 5, 5, 5, 10, 10]
     conReqCnt = 0
+    errCnt = 0
     lastCommand = 0
 
     isRunning = False
@@ -138,16 +138,17 @@ class FocusController(QObject):
 
     @Slot(float, float)
     def onResMoveDevice(self, position, intensity):
-        print(f"{TAG}9 onResDeviceMoved position: {position} intensity: {intensity}")
+        METHOD = "9 onResDeviceMoved "
+        print(f"{TAG}{METHOD}position: {position} intensity: {intensity}")
         if self.isPaused or not self.isRunning:
-            print(f"{TAG}9 onResDeviceMoved isPaused: {self.isPaused} isRunning: {self.isRunning}")
+            print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
             return
 
         self.roundData.append((position, intensity))
         if self.pointCnt < self.targetPointCnt[self.round] - 1:
             self.pointCnt += 1
             self.targetPosition = position + self.step[self.round]
-            print(f"{TAG}9 onResDeviceMoved next targetPosition: {self.targetPosition}")
+            print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
 
             self.reqMoveDevice.emit(self.targetPosition)
             return
@@ -159,33 +160,42 @@ class FocusController(QObject):
                 maxIntensity = data[1]
                 maxIdx = idx
 
-        print(f"{TAG}9 onResDeviceMoved 라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
+        print(f"{TAG}{METHOD}라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
         if self.round < 5:
 
-            if maxIdx == 0:     # 첫번째 점이 가장 높을 경우
-                self.errDevicePosition.emit("작업을 진행할 수 없습니다.")
-                return
-
-            elif maxIdx == self.targetPointCnt[self.round] - 1:     # 마지막 점이 가장 높을 경우
-                if self.round == 0:     # 라운드 0이면 다음 구간을 측정함
-                    targetPosition = position - 2 * self.step[0]
-                    self.initRound(targetPosition)
-                else:                   # 라운드 0 이후면 데이터가 잘못됐으므로 다시 시작
-                    self.errFocusingFailed.emit("포커싱을 다시 시작합니다")
-                    self.initFocusing()
-
-                # self.roundDataSignal.emit(self.round, self.roundData)
-            else:
+            if not (maxIdx == 0 or maxIdx == self.targetPointCnt[self.round] - 1):
                 targetPosition = self.roundData[maxIdx][0] - self.step[self.round]
                 self.round += 1
                 self.initRound(targetPosition)
+                print(f"{TAG}{METHOD}round complete. reqMoveDevice to {self.targetPosition}")
+                self.reqMoveDevice.emit(self.targetPosition)
+                return
 
-            self.reqMoveDevice.emit(self.targetPosition)
+            if self.round == 1:
+                if maxIdx != 0:
+                    targetPosition = position - 2 * self.step[0]
+                    self.initRound(targetPosition)
+                    self.reqMoveDevice.emit(self.targetPosition)
+                    return
+
+                self.exceptionHandling()
+                return
 
         else:
-            print(f"{TAG}9 onResDeviceMoved 포커싱 완료")
+            print(f"{TAG}{METHOD}포커싱 완료")
             self.isRunning = False
             self.focusCompleteSignal.emit(self.roundData, maxIdx)
+
+    def exceptionHandling(self):
+        METHOD = "10 exceptionHandling "
+        if self.errCnt < 1:
+            print(f"{TAG}{METHOD}데이터 비정상 재측정")
+            self.initFocusing()
+            self.errCnt += 1
+            self.reqMoveDevice.emit(self.targetPosition)
+        else:
+            print(f"{TAG}{METHOD}재측정 횟수 초과")
+            self.focusDisabledErr.emit("데이터 비정상")
 
     @Slot()
     def onResStopDevice(self):
