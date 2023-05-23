@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 TAG = "테스트 모듈 : "
 TIME = datetime.now
 delay = 10
-caseNum = 1
+caseNum = 3
 
 caseData = caseMaker.load_case(caseNum)
 targetPointCnt = caseData["targetPointCnt"]
@@ -75,13 +75,6 @@ class FocusControllerTest(QObject):
     @Slot()
     def onAlreadyStoppedSignal(self):
         print(f"\n{TIME()} {TAG} alreadyStoppedSignal 발생\n")
-
-    # @Slot(int, list)
-    # def onRoundDataSignal(self, round, roundData):
-    #     print("roundDataSignal 발생")
-    #     print(f"round: ${round}")
-    #     for idx, data in roundData:
-    #         print(f"${idx}: ${data}")
 
     @Slot(list, int)
     def onFocusCompleteSignal(self, roundData, focusPosition):
@@ -182,8 +175,6 @@ def alreadyRunningSignalObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 alreadyRunningSignal 발생")
 def alreadStoppedSignalObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 alreadStoppedSignal 발생")
-def roundDataSignalObserver():
-    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 roundDataSignal 발생")
 def focusCompleteSignalObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 focusCompleteSignal 발생")
 
@@ -220,7 +211,6 @@ test = FocusControllerTest()
 focusController.initFocusingSignal.connect(test.initValues)
 focusController.alreadyRunningSignal.connect(test.onAlreadyRunningSignal)
 focusController.alreadyStoppedSignal.connect(test.onAlreadyStoppedSignal)
-# focusController.roundDataSignal.connect(test.onRoundDataSignal)
 focusController.focusCompleteSignal.connect(test.onFocusCompleteSignal)
 focusController.reqDeviceConnected.connect(test.onReqDeviceConnected)
 focusController.reqConnectDevice.connect(test.onReqConnectDevice)

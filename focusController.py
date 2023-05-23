@@ -15,7 +15,6 @@ class FocusController(QObject):
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
-    roundDataSignal = Signal(int, dict)
     focusCompleteSignal = Signal(list, int)
 
     reqDeviceConnected= Signal()
