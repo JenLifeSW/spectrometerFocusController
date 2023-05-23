@@ -1,21 +1,29 @@
 import random
 from datetime import datetime
 
+import caseMaker
 from focusController import FocusController
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
 
 TAG = "테스트 모듈 : "
 TIME = datetime.now
-delay = 1000
+delay = 10
+case_num = 1
 
-case = []
-case.append([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5])
-case.append([1.0, 1.5, 2.0, 1.6, 1.0])
-case.append([1.5, 1.75, 2.0, 1.75, 1.5])
-case.append([1.75, 1.8, 2.0, 1.8, 1.75])
-case.append([1.8, 1.85, 1.9, 1.95, 2.0, 1.97, 1.95, 1.9, 1.85, 1.8])
-case.append([1.95, 1.96, 1.97, 1.98, 1.99, 2.0, 1.99, 1.98, 1.97, 1.96])
+case_data = caseMaker.load_case(case_num)
+case = case_data["case"]
+targetPointCnt = case_data["targetPointCnt"]
+
+print(case)
+print(targetPointCnt)
+# case = []
+# case.append([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5])
+# case.append([1.0, 1.5, 2.0, 1.6, 1.0])
+# case.append([1.5, 1.75, 2.0, 1.75, 1.5])
+# case.append([1.75, 1.8, 2.0, 1.8, 1.75])
+# case.append([1.8, 1.85, 1.9, 1.95, 2.0, 1.97, 1.95, 1.9, 1.85, 1.8])
+# case.append([1.95, 1.96, 1.97, 1.98, 1.99, 2.0, 1.99, 1.98, 1.97, 1.96])
 
 
 class FocusControllerTest(QObject):
@@ -27,8 +35,7 @@ class FocusControllerTest(QObject):
     resStopDevice = Signal()
 
     cnt = 0
-    round = 1
-    targetPointCnt = [4, 5, 5, 5, 10, 10]
+    round = 0
 
     targetPosition = 0.0
 
@@ -52,7 +59,7 @@ class FocusControllerTest(QObject):
 
     def initValues(self):
         self.cnt = 0
-        self.round = 1
+        self.round = 0
 
     def resumeFocusing(self):
         print(f"\n{TIME()} {TAG} resumeFocusing 버튼\n")
@@ -101,14 +108,14 @@ class FocusControllerTest(QObject):
     @Slot(float)
     def onReqMoveDevice(self, position):
         self.targetPosition = position
-        if self.cnt >= self.targetPointCnt[self.round]:
+        if self.cnt >= targetPointCnt[self.round]:
             self.round += 1
             self.cnt = 0
 
         self.cnt += 1
 
         #current_time = datetime.now()
-        print(f"{TIME()} {TAG}라운드{self.round} 스테이지 이동 요청 감지 ({self.cnt}/{self.targetPointCnt[self.round]})\n")
+        print(f"{TIME()} {TAG}라운드{self.round} 스테이지 이동 요청 감지 ({self.cnt}/{targetPointCnt[self.round]})\n")
         # self.moveDeviceTimer.setInterval(delay)
         self.moveDeviceTimer.start()
         # self.resDeviceMoved.emit(position, case[self.round][self.cnt-1])
