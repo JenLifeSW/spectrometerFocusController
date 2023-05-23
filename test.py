@@ -9,12 +9,12 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 TAG = "테스트 모듈 : "
 TIME = datetime.now
 delay = 10
-case_num = 3
+caseNum = 1
 
-case_data = caseMaker.load_case(case_num)
-targetPointCnt = case_data["targetPointCnt"]
-sign = case_data["sign"]
-case = case_data["case"]
+caseData = caseMaker.load_case(caseNum)
+targetPointCnt = caseData["targetPointCnt"]
+sign = caseData["sign"]
+case = caseData["case"]
 
 print(case)
 print(targetPointCnt)
