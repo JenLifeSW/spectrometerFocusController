@@ -138,7 +138,7 @@ class FocusController(QObject):
 
     @Slot(float, float)
     def onResMoveDevice(self, position, intensity):
-        METHOD = "9 onResDeviceMoved "
+        METHOD = "8 onResDeviceMoved "
         print(f"{TAG}{METHOD}position: {position} intensity: {intensity}")
         if self.isPaused or not self.isRunning:
             print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
@@ -183,8 +183,49 @@ class FocusController(QObject):
             self.isRunning = False
             self.focusCompleteSignal.emit(self.roundData, maxIdx)
 
+    @Slot(float, float)
+    def onExePositionOver(self, position, intensity):
+        METHOD = "10 onExePositionOver"
+        print(f"{TAG}{METHOD}라운드 : {self.round}, 캡쳐 위치: {self.pointCnt}")
+        if self.round > 0:
+            self.exceptionHandling()
+            return
+        if self.pointCnt <= 2:
+            self.exceptionHandling()
+            return
+
+        self.roundData.append((position, intensity))
+
+        intensities = [data[1] for data in self.roundData]
+        maxIdx = intensities.index(max(intensities))
+        sortedData = sorted(self.roundData, key=lambda x: x[1])
+        diff = sortedData[0][0] - sortedData[1][0]
+
+        print(f"{TAG}{METHOD}data: {self.roundData}, maxIds: {maxIdx}, diff: {diff}")
+
+        if (maxIdx == 0) or (maxIdx == self.pointCnt-1):
+            self.exceptionHandling()
+            return
+
+        targetRound = 0
+        for idx, s in enumerate(self.step[self.round:]):
+            if s < diff:
+                targetRound = idx - 1
+                break
+
+        print(f"{TAG}{METHOD}targetRound: {targetRound}")
+        if targetRound < 1:
+            self.exceptionHandling()
+            return
+        self.round = targetRound
+        targetPosition = sortedData[0][0] - self.step[self.round]
+        self.initRound(targetPosition)
+        print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
+
+        self.reqMoveDevice.emit(self.targetPosition)
+
     def exceptionHandling(self):
-        METHOD = "10 exceptionHandling "
+        METHOD = "11 exceptionHandling "
         if self.errCnt < 1:
             print(f"{TAG}{METHOD}데이터 비정상 재측정")
             self.initFocusing()
@@ -194,9 +235,10 @@ class FocusController(QObject):
             print(f"{TAG}{METHOD}재측정 횟수 초과")
             self.focusDisabledErr.emit("데이터 비정상")
 
+
     @Slot()
     def onResStopDevice(self):
-        print(f"{TAG}8 onResStopDevices")
+        print(f"{TAG}9 onResStopDevices")
         if self.lastCommand == Command.RESTART:
             self.initFocusing()
             self.isRunning = True

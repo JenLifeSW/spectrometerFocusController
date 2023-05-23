@@ -9,21 +9,15 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 TAG = "테스트 모듈 : "
 TIME = datetime.now
 delay = 10
-case_num = 1
+case_num = 3
 
 case_data = caseMaker.load_case(case_num)
-case = case_data["case"]
 targetPointCnt = case_data["targetPointCnt"]
+sign = case_data["sign"]
+case = case_data["case"]
 
 print(case)
 print(targetPointCnt)
-# case = []
-# case.append([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5])
-# case.append([1.0, 1.5, 2.0, 1.6, 1.0])
-# case.append([1.5, 1.75, 2.0, 1.75, 1.5])
-# case.append([1.75, 1.8, 2.0, 1.8, 1.75])
-# case.append([1.8, 1.85, 1.9, 1.95, 2.0, 1.97, 1.95, 1.9, 1.85, 1.8])
-# case.append([1.95, 1.96, 1.97, 1.98, 1.99, 2.0, 1.99, 1.98, 1.97, 1.96])
 
 
 class FocusControllerTest(QObject):
@@ -33,6 +27,7 @@ class FocusControllerTest(QObject):
     resDeviceConnected = Signal(bool)
     resMoveDevice = Signal(float, float)
     resStopDevice = Signal()
+    exePositionOver = Signal(float, float)
 
     cnt = 0
     round = 0
@@ -114,11 +109,8 @@ class FocusControllerTest(QObject):
 
         self.cnt += 1
 
-        #current_time = datetime.now()
         print(f"{TIME()} {TAG}라운드{self.round} 스테이지 이동 요청 감지 ({self.cnt}/{targetPointCnt[self.round]})\n")
-        # self.moveDeviceTimer.setInterval(delay)
         self.moveDeviceTimer.start()
-        # self.resDeviceMoved.emit(position, case[self.round][self.cnt-1])
 
     @Slot()
     def onReqStopDevice(self):
@@ -149,6 +141,13 @@ class FocusControllerTest(QObject):
 
     def moveDevice(self):
         self.moveDeviceTimer.stop()
+        print(f"{TIME()} {TAG} sign: {sign} self.cnt: {self.cnt} len(case[self.round]): {len(case[self.round])}, self.round: {self.round}, len(case): {len(case)}")
+        if sign == "positionOver":
+            if (self.cnt == len(case[self.round])) and (self.round == len(case) - 1):
+                print(f"{TIME()} {TAG} positionOver 예외 발생 position: {self.targetPosition}, intensity: {case[self.round][self.cnt-1]}")
+                self.exePositionOver.emit(self.targetPosition, case[self.round][self.cnt-1])
+                return
+
         print(f"{TIME()} {TAG} 스테이지 이동완료 position: {self.targetPosition}, intensity: {case[self.round][self.cnt-1]}")
         self.resMoveDevice.emit(self.targetPosition, case[self.round][self.cnt-1])
 
@@ -175,6 +174,8 @@ def resDeviceConnectedObserver():
 def resStopDeviceObserver():
     print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resStopDevice 시그널 발생")
 def resMoveDeviceObserver():
+    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resMoveDevice 시그널 발생")
+def exePositionOverObserver():
     print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resMoveDevice 시그널 발생")
 
 def alreadyRunningSignalObserver():
@@ -214,6 +215,7 @@ test = FocusControllerTest()
 # test.resDeviceConnected.connect(resDeviceConnectedObserver)
 # test.resStopDevice.connect(resStopDeviceObserver)
 # test.resMoveDevice.connect(resMoveDeviceObserver)
+# test.exePositionOver.connect(exePositionOverObserver)
 
 focusController.initFocusingSignal.connect(test.initValues)
 focusController.alreadyRunningSignal.connect(test.onAlreadyRunningSignal)
@@ -232,24 +234,25 @@ test.restartFocusingSignal.connect(focusController.restartFocusing)
 test.resDeviceConnected.connect(focusController.onResDeviceConnected)
 test.resStopDevice.connect(focusController.onResStopDevice)
 test.resMoveDevice.connect(focusController.onResMoveDevice)
+test.exePositionOver.connect(focusController.onExePositionOver)
 
+if __name__ == "__main__":
+    app = QApplication([])
+    window = QMainWindow()
+    central_widget = QWidget()
+    layout = QVBoxLayout(central_widget)
 
-app = QApplication([])
-window = QMainWindow()
-central_widget = QWidget()
-layout = QVBoxLayout(central_widget)
+    btn1 = QPushButton("Resume")
+    btn2 = QPushButton("Pause")
+    btn3 = QPushButton("ReSstart")
+    btn1.clicked.connect(test.resumeFocusing)
+    btn2.clicked.connect(test.pauseFocusing)
+    btn3.clicked.connect(test.restartFocusing)
 
-btn1 = QPushButton("Resume")
-btn2 = QPushButton("Pause")
-btn3 = QPushButton("ReSstart")
-btn1.clicked.connect(test.resumeFocusing)
-btn2.clicked.connect(test.pauseFocusing)
-btn3.clicked.connect(test.restartFocusing)
+    layout.addWidget(btn1)
+    layout.addWidget(btn2)
+    layout.addWidget(btn3)
 
-layout.addWidget(btn1)
-layout.addWidget(btn2)
-layout.addWidget(btn3)
-
-window.setCentralWidget(central_widget)
-window.show()
-app.exec()
+    window.setCentralWidget(central_widget)
+    window.show()
+    app.exec()
