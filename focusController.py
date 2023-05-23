@@ -25,15 +25,15 @@ class FocusController(QObject):
 
     focusDisabledErr = Signal(str)
 
-    step = [1562.5, 1562.5, 625, 250, 50, 10]
-    targetPointCnt = [4, 5, 5, 5, 10, 10]
+    step = [1562.5, 625, 250, 50, 10]
+    targetPointCnt = [5, 5, 5, 10, 10]
     conReqCnt = 0
     errCnt = 0
     lastCommand = 0
 
     isRunning = False
     isPaused = False
-    round = 1               # 현재 라운드
+    round = 0               # 현재 라운드
     startPosition = 0.0     # 스테이지 바닥 위치
     targetPosition = 0.0     # 해당 라운드에서 측정을 시작할 위치
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
@@ -51,7 +51,7 @@ class FocusController(QObject):
         print(f"{TAG}2 initFocusing")
         self.isRunning = False
         self.isPaused = False
-        self.round = 1
+        self.round = 0
 
         self.targetPosition = self.startPosition
         self.pointCnt = 0
@@ -157,18 +157,19 @@ class FocusController(QObject):
         maxIdx = intensities.index(max(intensities))
 
         print(f"{TAG}{METHOD}라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
-        if self.round < 5:
+        if self.round < 4:
 
             if not (maxIdx == 0 or maxIdx == self.targetPointCnt[self.round] - 1):
                 targetPosition = self.roundData[maxIdx][0] - self.step[self.round]
                 self.round += 1
                 self.initRound(targetPosition)
-                print(f"{TAG}{METHOD}round complete. reqMoveDevice to {self.targetPosition}")
+                print(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveDevice to {self.targetPosition}")
                 self.reqMoveDevice.emit(self.targetPosition)
                 return
 
-            if self.round == 1:
+            if self.round == 0:
                 if maxIdx != 0:
+                    print(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveDevice to {self.targetPosition}")
                     targetPosition = position - 2 * self.step[0]
                     self.initRound(targetPosition)
                     self.reqMoveDevice.emit(self.targetPosition)
