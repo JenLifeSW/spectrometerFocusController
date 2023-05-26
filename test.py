@@ -8,8 +8,8 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 
 TAG = "테스트 모듈 : "
 TIME = datetime.now
-delay = 10
-caseNum = 3
+delay = 1000
+caseNum = 1
 
 caseData = caseMaker.load_case(caseNum)
 targetPointCnt = caseData["targetPointCnt"]
@@ -25,8 +25,9 @@ class FocusControllerTest(QObject):
     pauseFocusingSignal = Signal()
     restartFocusingSignal = Signal()
     resDeviceConnected = Signal(bool)
-    resMoveDevice = Signal(float, float)
-    resStopDevice = Signal()
+    resMoveStage = Signal(float)
+    resStopStage = Signal()
+    resGetSpectrum = Signal(float)
     exePositionOver = Signal(float, float)
 
     cnt = 0
@@ -36,21 +37,21 @@ class FocusControllerTest(QObject):
 
     checkDeviceTimer = QTimer()
     connectDeviceTimer = QTimer()
-    moveDeviceTimer = QTimer()
-    stopDeviceTimer = QTimer()
+    moveStageTimer = QTimer()
+    stopStageTimer = QTimer()
 
     checkDeviceTimer.setInterval(delay)
     connectDeviceTimer.setInterval(delay)
-    moveDeviceTimer.setInterval(delay)
-    stopDeviceTimer.setInterval(delay / 100)
+    moveStageTimer.setInterval(delay)
+    stopStageTimer.setInterval(delay / 100)
 
     def __init__(self):
         print(f"{TIME()} {TAG} init")
         super().__init__()
         self.checkDeviceTimer.timeout.connect(self.checkDevice)
         self.connectDeviceTimer.timeout.connect(self.connectDevice)
-        self.moveDeviceTimer.timeout.connect(self.moveDevice)
-        self.stopDeviceTimer.timeout.connect(self.stopDevice)
+        self.moveStageTimer.timeout.connect(self.moveStage)
+        self.stopStageTimer.timeout.connect(self.stopStage)
 
     def initValues(self):
         self.cnt = 0
@@ -94,7 +95,7 @@ class FocusControllerTest(QObject):
         self.connectDeviceTimer.start()
 
     @Slot(float)
-    def onReqMoveDevice(self, position):
+    def onReqMoveStage(self, position):
         self.targetPosition = position
         if self.cnt >= targetPointCnt[self.round]:
             self.round += 1
@@ -103,13 +104,18 @@ class FocusControllerTest(QObject):
         self.cnt += 1
 
         print(f"{TIME()} {TAG}라운드{self.round} 스테이지 이동 요청 감지 ({self.cnt}/{targetPointCnt[self.round]})\n")
-        self.moveDeviceTimer.start()
+        self.moveStageTimer.start()
 
     @Slot()
-    def onReqStopDevice(self):
+    def onReqStopStage(self):
         print(f"{TIME()} {TAG} 기기 중지 요청 감지\n")
-        # self.stopDeviceTimer.setInterval(delay)
-        self.stopDeviceTimer.start()
+        self.stopStageTimer.start()
+
+    @Slot()
+    def onGetSpectrum(self):
+        print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지")
+        self.resGetSpectrum.emit(case[self.round][self.cnt-1])
+
 
     @Slot(str)
     def onfocusDisabledErr(self, errMsg):
@@ -132,8 +138,8 @@ class FocusControllerTest(QObject):
         self.connectDeviceTimer.stop()
         self.resDeviceConnected.emit()
 
-    def moveDevice(self):
-        self.moveDeviceTimer.stop()
+    def moveStage(self):
+        self.moveStageTimer.stop()
         print(f"{TIME()} {TAG} sign: {sign} self.cnt: {self.cnt} len(case[self.round]): {len(case[self.round])}, self.round: {self.round}, len(case): {len(case)}")
         if sign == "positionOver":
             if (self.cnt == len(case[self.round])) and (self.round == len(case) - 1):
@@ -142,17 +148,17 @@ class FocusControllerTest(QObject):
                 return
 
         print(f"{TIME()} {TAG} 스테이지 이동완료 position: {self.targetPosition}, intensity: {case[self.round][self.cnt-1]}")
-        self.resMoveDevice.emit(self.targetPosition, case[self.round][self.cnt-1])
+        self.resMoveStage.emit(self.targetPosition)
 
-    def stopDevice(self):
+    def stopStage(self):
         print(f"{TIME()} {TAG} 기기 정지")
-        self.stopDeviceTimer.stop()
+        self.stopStageTimer.stop()
         if self.cnt > 0:
             self.cnt -= 1
         else:
             if self.round > 0:
                 self.round -= 1
-        self.resStopDevice.emit()
+        self.resStopStage.emit()
 
 # OBSERVER
 
@@ -164,17 +170,17 @@ def restartFocusingObserver():
     print(f"                    {TIME()}[OBSERVER] 테스트 모듈 restart 신호 발생")
 def resDeviceConnectedObserver():
     print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resDeviceConnected 시그널 발생")
-def resStopDeviceObserver():
-    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resStopDevice 시그널 발생")
-def resMoveDeviceObserver():
-    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resMoveDevice 시그널 발생")
+def resStopStageObserver():
+    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resStopStage 시그널 발생")
+def resMoveStageObserver():
+    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resMoveStage 시그널 발생")
 def exePositionOverObserver():
-    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 resMoveDevice 시그널 발생")
+    print(f"                    {TIME()}[OBSERVER] 테스트 모듈 exePositionOver 시그널 발생")
 
 def alreadyRunningSignalObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 alreadyRunningSignal 발생")
 def alreadStoppedSignalObserver():
-    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 alreadStoppedSignal 발생")
+    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 alreadyStoppedSignal 발생")
 def focusCompleteSignalObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 focusCompleteSignal 발생")
 
@@ -182,10 +188,10 @@ def reqDeviceConnectedObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqDeviceConnected 요청 발생")
 def reqConnectDeviceObserver():
     print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqConnectDevice 요청 발생")
-def reqStopDeviceObserver():
-    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqStopDevice 요청 발생")
-def reqMoveDeviceObserver():
-    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqMoveDevice 요청 발생")
+def reqStopStageObserver():
+    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqStopStage 요청 발생")
+def reqMoveStageObserver():
+    print(f"                    {TIME()}[OBSERVER] 포커스 모듈 reqMoveStage 요청 발생")
 
 
 focusController = FocusController(testing=True)
@@ -196,16 +202,16 @@ test = FocusControllerTest()
 # focusController.focusCompleteSignal.connect(focusCompleteSignalObserver)
 # focusController.reqDeviceConnected.connect(reqDeviceConnectedObserver)
 # focusController.reqConnectDevice.connect(reqConnectDeviceObserver)
-# focusController.reqStopDevice.connect(reqStopDeviceObserver)
-# focusController.reqMoveDevice.connect(reqMoveDeviceObserver)
+# focusController.reqStopStage.connect(reqStopStageObserver)
+# focusController.reqMoveStage.connect(reqMoveStageObserver)
 # focusController.focusDisabledErr.connect(focusDisabledErrObserver)
 #
 # test.resumeFocusingSignal.connect(resumeFocusingObserver)
 # test.pauseFocusingSignal.connect(pauseFocusingObserver)
 # test.restartFocusingSignal.connect(restartFocusingObserver)
 # test.resDeviceConnected.connect(resDeviceConnectedObserver)
-# test.resStopDevice.connect(resStopDeviceObserver)
-# test.resMoveDevice.connect(resMoveDeviceObserver)
+# test.resStopStage.connect(resStopStageObserver)
+# test.resMoveStage.connect(resMoveStageObserver)
 # test.exePositionOver.connect(exePositionOverObserver)
 
 focusController.initFocusingSignal.connect(test.initValues)
@@ -214,16 +220,19 @@ focusController.alreadyStoppedSignal.connect(test.onAlreadyStoppedSignal)
 focusController.focusCompleteSignal.connect(test.onFocusCompleteSignal)
 focusController.reqDeviceConnected.connect(test.onReqDeviceConnected)
 focusController.reqConnectDevice.connect(test.onReqConnectDevice)
-focusController.reqStopDevice.connect(test.onReqStopDevice)
-focusController.reqMoveDevice.connect(test.onReqMoveDevice)
+focusController.reqStopStage.connect(test.onReqStopStage)
+focusController.reqMoveStage.connect(test.onReqMoveStage)
+focusController.reqGetSpectrum.connect(test.onGetSpectrum)
 focusController.focusDisabledErr.connect(test.onfocusDisabledErr)
 
 test.resumeFocusingSignal.connect(focusController.resumeFocusing)
 test.pauseFocusingSignal.connect(focusController.pauseFocusing)
 test.restartFocusingSignal.connect(focusController.restartFocusing)
 test.resDeviceConnected.connect(focusController.onResDeviceConnected)
-test.resStopDevice.connect(focusController.onResStopDevice)
-test.resMoveDevice.connect(focusController.onResMoveDevice)
+test.resStopStage.connect(focusController.onResStopStage)
+test.resMoveStage.connect(focusController.onResMoveStage)
+test.resGetSpectrum.connect(focusController.onResGetSpectrum)
+
 test.exePositionOver.connect(focusController.onExePositionOver)
 
 if __name__ == "__main__":

@@ -16,13 +16,13 @@ class FocusController(QObject):
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
     focusCompleteSignal = Signal(list, int)
-
-    reqDeviceConnected= Signal()
-    reqConnectDevice = Signal()
-    reqStopDevice = Signal()
-    reqMoveDevice = Signal(float)
-
     focusDisabledErr = Signal(str)
+
+    reqDeviceConnected = Signal()
+    reqConnectDevice = Signal()
+    reqStopStage = Signal()
+    reqMoveStage = Signal(float)
+    reqGetSpectrum = Signal()
 
     step = [1562.5, 625, 250, 50, 10]
     targetPointCnt = [5, 5, 5, 10, 10]
@@ -34,7 +34,8 @@ class FocusController(QObject):
     isPaused = False
     round = 0               # 현재 라운드
     startPosition = 0.0     # 스테이지 바닥 위치
-    targetPosition = 0.0     # 해당 라운드에서 측정을 시작할 위치
+    targetPosition = 0.0    # 측정을 요청할 위치
+    arrivePosition = 0.0    # 스테이지 이동 요청 후 응답 받은 도착 위치
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
     roundData = []          # 해당 라운드에서 이동하면서 수집한 데이터 [("position": "intensity")]
 
@@ -100,7 +101,7 @@ class FocusController(QObject):
             return
 
         self.isPaused = True
-        self.reqStopDevice.emit()
+        self.reqStopStage.emit()
 
     @Slot()
     def restartFocusing(self):
@@ -113,43 +114,67 @@ class FocusController(QObject):
             return
 
         self.isPaused = True
-        self.reqStopDevice.emit()
+        self.reqStopStage.emit()
+
+    def exceptionHandling(self):
+        METHOD = "7 exceptionHandling "
+        if self.errCnt < 1:
+            print(f"{TAG}{METHOD}데이터 비정상 재측정")
+            self.initFocusing()
+            self.errCnt += 1
+            self.reqMoveStage.emit(self.targetPosition)
+        else:
+            print(f"{TAG}{METHOD}재측정 횟수 초과")
+            self.focusDisabledErr.emit("데이터 비정상")
 
     @Slot(bool)
     def onResDeviceConnected(self, isConnected):
-        print(f"{TAG}7 onResDeviceConnected, isConnected: {isConnected}")
+        METHOD = "8 onResDeviceConnected "
+        print(f"{TAG}{METHOD}isConnected: {isConnected}")
         if not isConnected:
-            print(f"{TAG}7 onResDeviceConnected, not Connected 연결확인횟수: {self.conReqCnt+1}")
+            print(f"{TAG}{METHOD}not Connected 연결확인횟수: {self.conReqCnt+1}")
             if self.conReqCnt < 2:
                 self.conReqCnt += 1
                 self.reqConnectDevice.emit()
             return
 
-        print(f"{TAG}7 onResDeviceConnected, isPaused: {self.isPaused}")
+        print(f"{TAG}{METHOD}isPaused: {self.isPaused}")
         if self.isPaused:
             self.isPaused = False
         else:
             self.initFocusing()
 
         self.isRunning = True
-        print(f"{TAG}7 onResDeviceConnected, reqMoveDevice 요청")
-        self.reqMoveDevice.emit(self.targetPosition)
+        print(f"{TAG}{METHOD} reqMoveDevice 요청")
+        self.reqMoveStage.emit(self.targetPosition)
 
-    @Slot(float, float)
-    def onResMoveDevice(self, position, intensity):
-        METHOD = "8 onResDeviceMoved "
-        print(f"{TAG}{METHOD}position: {position} intensity: {intensity}")
+    @Slot(float)
+    def onResMoveStage(self, position):
+        METHOD = "9 onResMoveStage "
+        print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
         if self.isPaused or not self.isRunning:
-            print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
             return
+        print(f"{TAG}{METHOD}position: {position}")
+        self.arrivePosition = position
 
+        self.reqGetSpectrum.emit()
+
+    @Slot(float)
+    def onResGetSpectrum(self, intensity):
+        METHOD = "9 ResGetSpectrum "
+        print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
+        if self.isPaused or not self.isRunning:
+            return
+        print(f"{TAG}{METHOD}intensity: {intensity}")
+
+        position = self.arrivePosition
         self.roundData.append((position, intensity))
         if self.pointCnt < self.targetPointCnt[self.round] - 1:
             self.pointCnt += 1
             self.targetPosition = position + self.step[self.round]
             print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
 
-            self.reqMoveDevice.emit(self.targetPosition)
+            self.reqMoveStage.emit(self.targetPosition)
             return
 
         intensities = [data[1] for data in self.roundData]
@@ -162,16 +187,16 @@ class FocusController(QObject):
                 targetPosition = self.roundData[maxIdx][0] - self.step[self.round]
                 self.round += 1
                 self.initRound(targetPosition)
-                print(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveDevice to {self.targetPosition}")
-                self.reqMoveDevice.emit(self.targetPosition)
+                print(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
+                self.reqMoveStage.emit(self.targetPosition)
                 return
 
             if self.round == 0:
                 if maxIdx != 0:
-                    print(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveDevice to {self.targetPosition}")
+                    print(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveStage to {self.targetPosition}")
                     targetPosition = position - 2 * self.step[0]
                     self.initRound(targetPosition)
-                    self.reqMoveDevice.emit(self.targetPosition)
+                    self.reqMoveStage.emit(self.targetPosition)
                     return
 
                 self.exceptionHandling()
@@ -221,24 +246,12 @@ class FocusController(QObject):
         self.initRound(targetPosition)
         print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
 
-        self.reqMoveDevice.emit(self.targetPosition)
-
-    def exceptionHandling(self):
-        METHOD = "11 exceptionHandling "
-        if self.errCnt < 1:
-            print(f"{TAG}{METHOD}데이터 비정상 재측정")
-            self.initFocusing()
-            self.errCnt += 1
-            self.reqMoveDevice.emit(self.targetPosition)
-        else:
-            print(f"{TAG}{METHOD}재측정 횟수 초과")
-            self.focusDisabledErr.emit("데이터 비정상")
-
+        self.reqMoveStage.emit(self.targetPosition)
 
     @Slot()
-    def onResStopDevice(self):
-        print(f"{TAG}9 onResStopDevices")
+    def onResStopStage(self):
+        print(f"{TAG}11 onResStopStage")
         if self.lastCommand == Command.RESTART:
             self.initFocusing()
             self.isRunning = True
-            self.reqMoveDevice.emit(self.targetPosition)
+            self.reqMoveStage.emit(self.targetPosition)
