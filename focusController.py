@@ -3,6 +3,14 @@ from PySide6.QtCore import QObject, Signal, Slot
 TAG = "     포커스 모듈 : "
 
 
+def use_mm(value):
+    return value/1000
+
+
+def use_um(value):
+    return value/1000000
+
+
 class Command:
     RESUEME = 1
     PAUSE = 2
@@ -24,8 +32,8 @@ class FocusController(QObject):
     reqMoveStage = Signal(float)
     reqGetSpectrum = Signal()
 
-    step = [1562.5, 625, 250, 50, 10]
-    targetPointCnt = [5, 5, 5, 10, 10]
+    step = [-use_um(1562), -use_um(625), -use_um(250), -use_um(50), -use_um(10)]
+    targetPointCnt = [6, 6, 6, 11, 11]
     conReqCnt = 0
     errCnt = 0
     lastCommand = 0
@@ -39,13 +47,16 @@ class FocusController(QObject):
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
     roundData = []          # 해당 라운드에서 이동하면서 수집한 데이터 [("position": "intensity")]
 
-    def __init__(self, startPosition=0.0, testing=False):
+    def __init__(self, startPosition=startPosition, testing=False):
         super().__init__()
         print(f"{TAG}1 init")
         self.startPosition = startPosition
-        self.testing=testing
+        self.testing = testing
 
         # self.initFocusing()
+
+    def setStartPosition(self, startPosition):
+        self.startPosition = startPosition
 
     def initFocusing(self):
         print(f"{TAG}2 initFocusing")
@@ -199,8 +210,8 @@ class FocusController(QObject):
                     self.reqMoveStage.emit(self.targetPosition)
                     return
 
-                self.exceptionHandling()
-                return
+            self.exceptionHandling()
+            return
 
         else:
             print(f"{TAG}{METHOD}포커싱 완료")
