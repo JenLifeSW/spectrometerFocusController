@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 
-import caseMaker
+from example import caseMaker
 from focusController import FocusController
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
