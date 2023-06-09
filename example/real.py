@@ -47,9 +47,9 @@ class FocusControllerTest(QObject):
     ''' 모듈 통신 '''
     reqMoveStage = Signal(int, float)
     reqStopStage = Signal()
-    reqRamanShift = Signal(float)
 
     ''' 포커스 컨트롤러 통신 '''
+    initFocusingSignal = Signal()
     resumeFocusingSignal = Signal()
     pauseFocusingSignal = Signal()
     restartFocusingSignal = Signal()
@@ -74,7 +74,7 @@ class FocusControllerTest(QObject):
             stageSettings["acceleration"]
         )
         self.initConnect()
-        self.goHome()
+        self.initFocusing()
 
     def initConnect(self):
 
@@ -83,10 +83,8 @@ class FocusControllerTest(QObject):
         # 테스트모듈 -> 기기 요청
         self.reqMoveStage.connect(self.stage.move)
         self.reqStopStage.connect(self.stage.stopMove)
-        #self.reqRamanShift.connect(self.spec.getRamanShift)
 
         # 기기 -> 테스트모듈 일반시그널
-        #self.spec.ramanSignal.connect(self.onResRamanShift)
         self.stage.stageMovedSignal.connect(self.onResMoveStage)
         self.stage.errCannotDetect.connect(self.onErrCannotDetect)
         self.stage.errPositionLimit.connect(self.onErrPositionLimit)
@@ -112,16 +110,12 @@ class FocusControllerTest(QObject):
         self.log_print(msg)
 
     ''' 모듈 '''
-    def goHome(self):
-        self.log_print(f"\n{TIME()} {TAG} goHome 버튼")
+    def initFocusing(self):
+        self.log_print(f"\n{TIME()} {TAG} initFocusing 버튼")
         #self.stage.stages[0].home()
         #self.reqMoveStage.emit(0, limit[0] * -1)
         self.reqMoveStage.emit(0, stageSettings["top"])
-
-    def stopTimer(self):
-        self.log_print(f"\n{TIME()} {TAG} stopTimer 버튼")
-        self.reqStopStage.emit()
-
+        self.initFocusingSignal.emit()
 
     @Slot(bool)
     def onLaserConnected(self, isConnected):
@@ -157,7 +151,6 @@ class FocusControllerTest(QObject):
     @Slot(str)
     def onErrPositionLimit(self, msg):
         self.log_print(f"{TIME()} {TAG} {msg}")
-
 
     ''' 포커싱 '''
     # 베이직 시그널
@@ -259,7 +252,6 @@ class Window(QMainWindow):
 
     def initDevice(self):
 
-        #focusController.initFocusingSignal.connect(test.initValues)
         self.focusController.alreadyRunningSignal.connect(self.test.onAlreadyRunningSignal)
         self.focusController.alreadyStoppedSignal.connect(self.test.onAlreadyStoppedSignal)
         self.focusController.focusCompleteSignal.connect(self.test.onFocusCompleteSignal)
@@ -270,6 +262,7 @@ class Window(QMainWindow):
         self.focusController.reqGetSpectrum.connect(self.test.onReqGetSpectrum)
         self.focusController.focusDisabledErr.connect(self.test.onfocusDisabledErr)
 
+        self.test.initFocusingSignal.connect(self.focusController.initFocusing)
         self.test.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
         self.test.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
         self.test.restartFocusingSignal.connect(self.focusController.restartFocusing)
@@ -284,25 +277,19 @@ class Window(QMainWindow):
         layout = QVBoxLayout(central_widget)
 
         logWindow = LogWindow()
-        #btnInit = QPushButton("init")
-        btnStop = QPushButton("StopTimer")
-        btnHome = QPushButton("Go Home")
+        btnInit = QPushButton("initFocusing")
         btn1 = QPushButton("Resume")
         btn2 = QPushButton("Pause")
         btn3 = QPushButton("ReStart")
 
-        #btnInit.clicked.connect(self.test.initWithLog)
-        btnStop.clicked.connect(self.test.stopTimer)
-        btnHome.clicked.connect(self.test.goHome)
+        btnInit.clicked.connect(self.test.initFocusing)
         btn1.clicked.connect(self.test.resumeFocusing)
         btn2.clicked.connect(self.test.pauseFocusing)
         btn3.clicked.connect(self.test.restartFocusing)
         self.test.logMessage.connect(logWindow.append_log)
         self.test.initWithLog()
 
-        #layout.addWidget(btnInit)
-        layout.addWidget(btnStop)
-        layout.addWidget(btnHome)
+        layout.addWidget(btnInit)
         layout.addWidget(btn1)
         layout.addWidget(btn2)
         layout.addWidget(btn3)
