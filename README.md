@@ -2,7 +2,11 @@
 
 스펙트로미터 포커싱 알고리즘을 포함한 제어 모듈
 
-## Signals
+## Dependency
+
+- deviceAPIs v 1.2.1
+
+### Signals
 
     - initFocusingSignal()
     - alreadyRunningSignal()
@@ -51,7 +55,7 @@
 
 - 기기 정지 요청
 
-## Slots
+### Slots
 
     - resumeFocusing()
     - pauseFocusing()

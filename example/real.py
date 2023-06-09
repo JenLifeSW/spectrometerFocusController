@@ -23,7 +23,6 @@ def use_um(value):
 stageSettings = {
     "bottom": use_mm(3),
     "top": use_mm(17),
-    "minVelocity": use_mm(0.1),
     "maxVelocity": use_mm(1),
     "acceleration": use_mm(1)
 }
@@ -69,7 +68,6 @@ class FocusControllerTest(QObject):
         self.stage.setLimit(0, stageSettings["bottom"], stageSettings["top"])
         self.stage.setUpVelocity(
             0,
-            stageSettings["minVelocity"],
             stageSettings["maxVelocity"],
             stageSettings["acceleration"]
         )
