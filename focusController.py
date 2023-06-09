@@ -118,7 +118,7 @@ class FocusController(QObject):
             return
 
         self.isPaused = True
-        self.reqStopStage.emit()
+        # self.reqStopStage.emit()
 
     @Slot()
     def restartFocusing(self):

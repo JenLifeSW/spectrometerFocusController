@@ -45,7 +45,7 @@ class FocusControllerTest(QObject):
 
     ''' 모듈 통신 '''
     reqMoveStage = Signal(int, float)
-    reqStopStage = Signal()
+    reqStopStage = Signal(int)
 
     ''' 포커스 컨트롤러 통신 '''
     initFocusingSignal = Signal()
@@ -202,6 +202,7 @@ class FocusControllerTest(QObject):
 
     def onReqStopStage(self):
         self.log_print(f"{TIME()} {TAG} 기기 중지 요청 감지\n")
+        self.reqStopStage.emit(0)
 
     def onReqGetSpectrum(self):
         self.log_print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지\n")
