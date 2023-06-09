@@ -112,7 +112,7 @@ class FocusControllerTest(QObject):
         self.log_print(f"\n{TIME()} {TAG} initFocusing 버튼")
         #self.stage.stages[0].home()
         #self.reqMoveStage.emit(0, limit[0] * -1)
-        self.reqMoveStage.emit(0, stageSettings["top"])
+        #self.reqMoveStage.emit(0, stageSettings["top"])
         self.initFocusingSignal.emit()
 
     @Slot(bool)

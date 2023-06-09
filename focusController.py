@@ -60,6 +60,9 @@ class FocusController(QObject):
 
     def initFocusing(self):
         print(f"{TAG}2 initFocusing")
+        self.reqStopStage.emit()
+
+        self.lastCommand = 0
         self.isRunning = False
         self.isPaused = False
         self.round = 0
@@ -67,6 +70,9 @@ class FocusController(QObject):
         self.targetPosition = self.startPosition
         self.pointCnt = 0
         self.roundData = []
+
+        self.reqMoveStage.emit(self.targetPosition)
+
         if self.testing:
             self.initFocusingSignal.emit()
 
