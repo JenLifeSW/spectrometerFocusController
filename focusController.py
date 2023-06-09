@@ -60,7 +60,6 @@ class FocusController(QObject):
 
     def initFocusing(self):
         print(f"{TAG}2 initFocusing")
-        self.reqStopStage.emit()
 
         self.lastCommand = 0
         self.isRunning = False
