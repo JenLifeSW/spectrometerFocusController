@@ -6,7 +6,7 @@ from deviceAPIs import Laser, Spectrometer, Stage
 
 from focusController import FocusController
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, QEvent
 
 TAG = "실제 기기 테스트 : "
 TIME = datetime.now
@@ -298,9 +298,23 @@ class Window(QMainWindow):
     def closeEvent(self, event):
         self.test.close()
 
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            key = event.key()
+            print(f"key: {key}, {type(key)}")
+            if key == 51:
+                self.test.resumeFocusing()
+            elif key == 50:
+                self.test.pauseFocusing()
+            elif key == 49:
+                self.test.restartFocusing()
+
+        return super().eventFilter(obj, event)
+
 
 if __name__ == "__main__":
     app = QApplication([])
     window = Window()
+    window.installEventFilter(window)
     window.show()
     app.exec()
