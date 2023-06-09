@@ -93,6 +93,7 @@ class FocusController(QObject):
             if not self.isPaused:
                 print(f"{TAG}4 resumeFocusing, not Running, not Paused")
                 self.alreadyRunningSignal.emit()
+                return
             print(f"{TAG}4 resumeFocusing, paused -> resume")
 
         print(f"{TAG}4 resumeFocusing, reqDeviceConnected 요청")
