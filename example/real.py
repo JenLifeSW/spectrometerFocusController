@@ -218,8 +218,8 @@ class FocusControllerTest(QObject):
         self.resMoveStage.emit(position)
         #self.reqRamanShift.emit(633.0)
 
-    @Slot(int, float)
-    def onResStopStage(self, idx, position):
+    @Slot(int)
+    def onResStopStage(self, idx):
         self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
         self.resStopStage.emit()
 
