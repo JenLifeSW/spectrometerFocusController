@@ -84,6 +84,7 @@ class FocusControllerTest(QObject):
 
         # 기기 -> 테스트모듈 일반시그널
         self.stage.stageMovedSignal.connect(self.onResMoveStage)
+        self.stage.stoppedSignal.connect(self.onResStopStage)
         self.stage.errCannotDetect.connect(self.onErrCannotDetect)
         self.stage.errPositionLimit.connect(self.onErrPositionLimit)
 
@@ -216,11 +217,10 @@ class FocusControllerTest(QObject):
         self.resMoveStage.emit(position)
         #self.reqRamanShift.emit(633.0)
 
-    '''@Slot(list)
-    def onResRamanShift(self, raman):
-        average = sum(raman) / len(raman)
-        self.log_print(f"{TIME()} {TAG} 라만 스펙트럼 평균: {average}")
-        self.resGetSpectrum.emit(average)'''
+    @Slot(int, float)
+    def onResStopStage(self, idx, position):
+        self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
+        self.resStopStage.emit()
 
     @Slot(str)
     def onfocusDisabledErr(self, errMsg):

@@ -272,4 +272,4 @@ class FocusController(QObject):
         if self.lastCommand == Command.RESTART:
             self.initFocusing()
             self.isRunning = True
-            self.reqMoveStage.emit(self.targetPosition)
+            # self.reqMoveStage.emit(self.targetPosition)
