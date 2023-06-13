@@ -1,16 +1,8 @@
-from datetime import datetime
+from PySide6.QtCore import QThread, QTimer, Signal, Slot
+from pylablib.devices import Thorlabs
 
-import numpy as np
 
-from deviceAPIs import Laser, Spectrometer, Stage
-
-from focusController import FocusController
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
-from PySide6.QtCore import QObject, Signal, Slot, QEvent
-
-TAG = "실제 기기 테스트 : "
-TIME = datetime.now
-
+TAG = "stage"
 
 def use_mm(value):
     return value/1000
@@ -20,301 +12,261 @@ def use_um(value):
     return value/1000000
 
 
-stageSettings = {
-    "bottom": use_mm(3),
-    "top": use_mm(17),
-    "maxVelocity": use_mm(1),
-    "acceleration": use_mm(1)
-}
+class Stage(QThread):
+    numberOfStages = 1
+    stage = []
+    limit = [(0, use_mm(50)), (0, use_mm(50)), (0, use_mm(50))]
+    driveDir = ["+", "+", "+"]
+    stageConnected = [False, False, False]
+    homed = [False, False, False]
 
+    connectedSignal = Signal(list)
+    homeingSignal = Signal()
+    homedSignal = Signal()
+    stoppingSignal = Signal(int)
+    stoppedSignal = Signal(int, float)
 
-class FocusControllerTest(QObject):
-    targetPosition = 0.0
-    isPaused = False
+    stageMovedSignal = Signal(int, float)
+    errCannotDetect = Signal(str)
+    errPositionLimit = Signal(str)
+    normalLogSignal = Signal(str)
 
-    laserConnected = False
-    specConnected = False
-    stageConnected = False
-    # stageSetted = False
+    homeTimer = QTimer()
+    driveTimer0 = QTimer()
+    driveTimer1 = QTimer()
+    driveTimer2 = QTimer()
+    moveTimer0 = QTimer()
+    moveTimer1 = QTimer()
+    moveTimer2 = QTimer()
+    timerInterval = 100
 
-    laser = Laser()
-    spec = Spectrometer()
-    stage = Stage(1)
-
-    logMessage = Signal(str)
-
-    ''' 모듈 통신 '''
-    reqMoveStage = Signal(int, float)
-    reqStopStage = Signal(int)
-
-    ''' 포커스 컨트롤러 통신 '''
-    initFocusingSignal = Signal()
-    resumeFocusingSignal = Signal()
-    pauseFocusingSignal = Signal()
-    restartFocusingSignal = Signal()
-    resDeviceConnected = Signal(bool)
-    resMoveStage = Signal(float)
-    resStopStage = Signal()
-    resGetSpectrum = Signal(float)
-    exePositionOver = Signal(float, float)
-
-    def __init__(self):
+    def __init__(self, numberOfStages=1):
         super().__init__()
+        self.initDevices(numberOfStages)
 
-    def initWithLog(self):
-        self.log_print(f"{TIME()} {TAG} init")
+    def initDevices(self, numberOfStages):
+        devices = []
+        try:
+            devices = Thorlabs.kinesis.list_kinesis_devices()
+            if numberOfStages > len(devices):
+                raise CanNotDetectSomeDevicesException()
 
-        self.laser.turnOn()
-        self.stage.setLimit(0, stageSettings["bottom"], stageSettings["top"])
-        self.stage.setUpVelocity(
-            0,
-            stageSettings["maxVelocity"],
-            stageSettings["acceleration"]
-        )
-        self.initConnect()
-        self.initFocusing()
+            for idx, device in enumerate(devices):
+                self.stage.append(Thorlabs.KinesisMotor(device[0], "MTS50-Z8"))
+                self.stage[idx].setup_velocity(max_velocity=use_mm(5))
+                self.stage[idx].setup_jog(step_size=use_mm(1))
+                self.stageConnected[idx] = True
 
-    def initConnect(self):
+            self.numberOfStages = numberOfStages
+            self.initTimer()
 
-        self.stage.nomalLogSignal.connect(self.onNomalLogSignal)
+        except CanNotDetectSomeDevicesException as e:
+            print(f"$use: ${numberOfStages}, detected: ${len(devices)}, {e}")
+        except Exception as e:
+            print("\nKinesisMotor에 연결할 수 없습니다.", e)
 
-        # 테스트모듈 -> 기기 요청
-        self.reqMoveStage.connect(self.stage.move)
-        self.reqStopStage.connect(self.stage.stopMove)
+        finally:
+            self.connectedSignal.emit(self.stageConnected)
 
-        # 기기 -> 테스트모듈 일반시그널
-        self.stage.stageMovedSignal.connect(self.onResMoveStage)
-        self.stage.stoppedSignal.connect(self.onResStopStage)
-        self.stage.errCannotDetect.connect(self.onErrCannotDetect)
-        self.stage.errPositionLimit.connect(self.onErrPositionLimit)
+    def initTimer(self):
+        self.homeTimer.timeout.connect(self.checkHome)
 
-        # 기기 -> 테스트모듈 응답
-        self.laser.connectedSignal.connect(self.onLaserConnected)
-        self.spec.connectedSignal.connect(self.onSpectrometerConnected)
-        self.stage.connectedSignal.connect(self.onStageConnected)
-        self.laser.checkConnected()
-        self.spec.checkConnected()
-        self.stage.checkConnected()
+        self.driveTimer0.timeout.connect(self.jogToDrive0)
+        self.driveTimer1.timeout.connect(self.jogToDrive1)
+        self.driveTimer2.timeout.connect(self.jogToDrive2)
+
+        self.moveTimer0.timeout.connect(self.checkMoving0)
+        self.moveTimer1.timeout.connect(self.checkMoving1)
+        self.moveTimer2.timeout.connect(self.checkMoving2)
 
     def close(self):
-        self.laser.close()
-        self.spec.close()
-        self.stage.close()
+        for stage in self.stage:
+            stage.close()
 
-    def log_print(self, message):
-        self.logMessage.emit(message)
+    def checkConnected(self):
+        self.connectedSignal.emit(self.stageConnected)
 
-    @Slot(str)
-    def onNomalLogSignal(self, msg):
-        self.log_print(msg)
+    def setTimerInterval(self, interval):
+        self.timerInterval = interval
 
-    ''' 모듈 '''
-    def initFocusing(self):
-        self.log_print(f"\n{TIME()} {TAG} initFocusing 버튼")
-        #self.stage.stages[0].home()
-        #self.reqMoveStage.emit(0, limit[0] * -1)
-        #self.reqMoveStage.emit(0, stageSettings["top"])
-        self.initFocusingSignal.emit()
+    def setLimit(self, idx, bottom=use_mm(0), top=use_mm(50)):
+        METHOD = "setLimit"
+        print(f"{TAG}#{idx} {METHOD} {bottom}, {top}")
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD} 스테이지를 찾을 수 없습니다.")
+            return
 
-    @Slot(bool)
-    def onLaserConnected(self, isConnected):
-        if isConnected:
-            self.log_print(f"{TIME()} {TAG} 레이저 연결됨")
-            self.laserConnected = True
-        else:
-            self.log_print(f"{TIME()} {TAG} 레이저 연결 실패")
-            self.laserConnected = False
+        self.limit[idx] = (bottom, top)
 
-    @Slot(bool)
-    def onSpectrometerConnected(self, isConnected):
-        if isConnected:
-            self.log_print(f"{TIME()} {TAG} 스펙트로미터 연결됨")
-            self.specConnected = True
-        else:
-            self.log_print(f"{TIME()} {TAG} 스펙트로미터 연결 실패")
-            self.specConnected = False
+    def setUpVelocity(self, idx, maxVelocity, acc):
+        self.stage[idx].setup_velocity(max_velocity=maxVelocity, acceleration=acc)
 
-    @Slot(list)
-    def onStageConnected(self, stageConnected):
-        if stageConnected[0]:
-            self.log_print(f"{TIME()} {TAG} 스테이지 연결됨")
-            self.stageConnected = True
-        else:
-            self.log_print(f"{TIME()} {TAG} 스테이지 연결 실패")
-            self.stageConnected = False
+    def setUpJog(self, idx, size):
+        self.stage[idx].setup_jog(step_size=size)
 
-    @Slot(str)
-    def onErrCannotDetect(self, msg):
-        self.log_print(f"{TIME()} {TAG} {msg}")
+    def setEnabled(self, idx, enable=True):
+        self.stage[idx]._enable_channel(enable)
 
-    @Slot(str)
-    def onErrPositionLimit(self, msg):
-        self.log_print(f"{TIME()} {TAG} {msg}")
+    def isEnabled(self, idx):
+        return "enabled" in self.stage[idx].get_status()
 
-    ''' 포커싱 '''
-    # 베이직 시그널
-    def resumeFocusing(self):
-        self.log_print(f"\n{TIME()} {TAG} resumeFocusing 버튼")
-        self.resumeFocusingSignal.emit()
+    def getPosition(self, idx):
+        return self.stage[idx].get_position()
 
-    def pauseFocusing(self):
-        self.log_print(f"\n{TIME()} {TAG} pauseFocusing 버튼")
-        self.pauseFocusingSignal.emit()
+    def home(self):
+        self.homeingSignal.emit()
+        self.homed = [False for _ in range(self.numberOfStages)]
 
-    def restartFocusing(self):
-        self.log_print(f"\n{TIME()} {TAG} restartFocusing 버튼")
-        self.restartFocusingSignal.emit()
-    # 베이직 시그널 응답
-    @Slot()
-    def onAlreadyRunningSignal(self):
-        self.log_print(f"\n{TIME()} {TAG} alreadyRunningSignal 발생\n")
+        for stage in self.stage:
+            stage.home()
+        self.homeTimer.start(self.timerInterval)
 
-    @Slot()
-    def onAlreadyStoppedSignal(self):
-        self.log_print(f"\n{TIME()} {TAG} alreadyStoppedSignal 발생\n")
+    def checkHome(self):
+        for idx, stage in enumerate(self.stage):
+            status = self.stage[idx].get_status()
+            if "homed" in status:
+                self.homed[idx] = True
 
-    @Slot(list, int)
-    def onFocusCompleteSignal(self, roundData, focusPosition):
-        self.log_print(f"\n{TIME()} {TAG} 포커싱 완료, {roundData}, {focusPosition}")
-        self.log_print(f"{TIME()} {TAG} 포커싱 완료, focusPositionIdx: {focusPosition}, focusData: {roundData[focusPosition]}\n")
+        if all(self.homed):
+            self.homeTimer.stop()
+            self.homedSignal.emit()
 
-    # 기기 응답에 따라 포커싱알고리즘에 응답
-    @Slot()
-    def onReqDeviceConnected(self):
-        self.log_print(f"{TIME()} {TAG} 기기 연결 확인 요청 감지 laser: {self.laserConnected}, spec: {self.specConnected}, stage: {self.stageConnected}\n")
-        if (self.laserConnected and self.specConnected and self.stageConnected):
-            self.resDeviceConnected.emit(True)
-        else:
-            self.resDeviceConnected.emit(False)
-
-    @Slot()
-    def onReqConnectDevice(self):
-        self.log_print(f"{TIME()} {TAG} 기기 연결 요청 감지\n")
-        ''' 
-        Todo: 연결안된 기기 파악하여 연결
+    def jog(self, idx, direction):
         '''
+        direction: "+", "-"
+        '''
+        METHOD = "jog"
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD} 스테이지를 찾을 수 없습니다.")
+            return
 
-    @Slot(float)
-    def onReqMoveStage(self, position):
-        self.log_print(f"{TIME()} {TAG} 스테이지 이동 요청 감지: {position}\n")
-        self.targetPosition = position
-        self.reqMoveStage.emit(0, position)
+        if direction == "+":
+            if self.limit[idx][1] <= self.getPosition(idx):
+                self.errPositionLimit.emit(f"{TAG}#{idx} {METHOD} 스테이지 상단 한계점 도달")
+                return
+            self.stage[idx].jog("+", kind="builtin")
+        elif direction == "-":
+            if self.getPosition(idx) <= self.limit[idx][0]:
+                self.errPositionLimit.emit(f"{TAG}#{idx} {METHOD} 스테이지 하단 한계점 도달")
+                return
+            self.stage[idx].jog("-", kind="builtin")
 
-    def onReqStopStage(self):
-        self.log_print(f"{TIME()} {TAG} 기기 중지 요청 감지\n")
-        self.reqStopStage.emit(0)
+    def jogToDrive0(self): self.jog(0, self.driveDir[0])
+    def jogToDrive1(self): self.jog(1, self.driveDir[1])
+    def jogToDrive2(self): self.jog(2, self.driveDir[2])
 
-    def onReqGetSpectrum(self):
-        self.log_print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지\n")
-        intensities = self.spec.getSpectrum()
-        #average = sum(intensities) / len(intensities)
-        average = np.mean(intensities)
-        self.resGetSpectrum.emit(average)
+    def driveStart(self, idx, direction):
+        '''
+        direction: "+", "-"
+        '''
+        METHOD = "driveStart"
+        '''
+        limit 구현
+        '''
+        moveAble = True
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD} 스테이지를 찾을 수 없습니다.")
+            return
 
-    # 포커싱알고리즘 응답에 따라 기기에 응답
-    @Slot(int, float)
-    def onResMoveStage(self, idx, position):
-        self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 이동 완료\n")
-        self.resMoveStage.emit(position)
-        #self.reqRamanShift.emit(633.0)
+        if direction == "+":
+            if self.limit[idx][1] <= self.getPosition(idx):
+                self.errPositionLimit.emit(f"{TAG}#{idx} {METHOD} 스테이지 상단 한계점 도달")
+                moveAble = False
+        elif direction == "-":
+            if self.getPosition(idx) <= self.limit[idx][0]:
+                self.errPositionLimit.emit(f"{TAG}#{idx} {METHOD} 스테이지 하단 한계점 도달")
+                moveAble = False
 
-    @Slot(int)
-    def onResStopStage(self, idx):
-        self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
-        self.resStopStage.emit()
+        self.driveDir[idx] = direction
+        if moveAble:
+            if idx == 0:
+                self.driveTimer0.start(self.timerInterval)
+            elif idx == 1:
+                self.driveTimer1.start(self.timerInterval)
+            else:
+                self.driveTimer2.start(self.timerInterval)
+        else:
+            if idx == 0:
+                self.driveTimer0.stop()
+            elif idx == 1:
+                self.driveTimer1.stop()
+            else:
+                self.driveTimer2.stop()
 
-    @Slot(str)
-    def onfocusDisabledErr(self, errMsg):
-        self.log_print(f"{TIME()} {TAG} 에러 발생 : {errMsg}")
+    def driveStop(self, idx):
+        METHOD = "[driveStop]"
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD} 스테이지를 찾을 수 없습니다.")
+            return
 
+        if idx == 0:
+            self.driveTimer0.stop()
+        elif idx == 1:
+            self.driveTimer1.stop()
+        else:
+            self.driveTimer2.stop()
 
-class LogWindow(QTextEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def move(self, idx, position):
+        # print(f"{TAG}#{idx} {position}, {self.limit[idx][1]}, {self.limit[idx][0]}")
+        METHOD = "[move]"
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD}스테이지를 찾을 수 없습니다.")
+            return
 
-    def append_log(self, message):
-        print(message)
-        self.append(message)
+        if self.limit[idx][1] < position or position < self.limit[idx][0]:
+            self.errPositionLimit.emit(f"{TAG}#{idx} {METHOD} 스테이지 한계점 이동불가 target:{position}, bot:{self.limit[idx][0]}, top:{self.limit[idx][1]}")
+            return
 
+        self.stage[idx].move_to(position)
+        if idx == 0:
+            self.moveTimer0.start(self.timerInterval)
+        elif idx == 1:
+            self.moveTimer1.start(self.timerInterval)
+        else:
+            self.moveTimer2.start(self.timerInterval)
 
-class Window(QMainWindow):
-    print("Window 객체 생성")
-    focusController = FocusController(testing=True)
-    focusController.setStartPosition(stageSettings["top"])
-    test = FocusControllerTest()
+    def checkMoving0(self): self.checkMoving(0)
+    def checkMoving1(self): self.checkMoving(1)
+    def checkMoving2(self): self.checkMoving(2)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def checkMoving(self, idx, printLog=False, forStop=False):
+        METHOD = "[checkMoving]"
+        if self.numberOfStages < idx:
+            self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD}스테이지를 찾을 수 없습니다.")
+            return
 
-        self.initDevice()
-        self.initUI()
+        status = self.stage[idx].get_status()
+        if printLog: print(f"{TAG}#{idx} {METHOD} status: {status}")
+        if (
+                "moving_fw" not in status and
+                "moving_bk" not in status and
+                "jogging_fw" not in status and
+                "jogging_bk" not in status
+        ):
+            if idx == 0:
+                self.moveTimer0.stop()
+            elif idx == 1:
+                self.moveTimer1.stop()
+            else:
+                self.moveTimer2.stop()
+            #self.normalLogSignal.emit(f"{TAG}#{idx} {METHOD} 이동완료 position: {self.getPosition(idx)}")
+                if forStop:
+                    self.stoppedSignal.emit(idx, self.getPosition(idx))
+                else:
+                    self.stageMovedSignal.emit(idx, self.getPosition(idx))
 
-    def initDevice(self):
+        def stopMove(self, idx, printLog=False):
+            METHOD = "[stopMove]"
+            if self.numberOfStages < idx:
+                self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD}스테이지를 찾을 수 없습니다.")
+                return
 
-        self.focusController.alreadyRunningSignal.connect(self.test.onAlreadyRunningSignal)
-        self.focusController.alreadyStoppedSignal.connect(self.test.onAlreadyStoppedSignal)
-        self.focusController.focusCompleteSignal.connect(self.test.onFocusCompleteSignal)
-        self.focusController.reqDeviceConnected.connect(self.test.onReqDeviceConnected)
-        self.focusController.reqConnectDevice.connect(self.test.onReqConnectDevice)
-        self.focusController.reqMoveStage.connect(self.test.onReqMoveStage)
-        self.focusController.reqStopStage.connect(self.test.onReqStopStage)
-        self.focusController.reqGetSpectrum.connect(self.test.onReqGetSpectrum)
-        self.focusController.focusDisabledErr.connect(self.test.onfocusDisabledErr)
+            self.stoppingSignal.emit(idx)
 
-        self.test.initFocusingSignal.connect(self.focusController.initFocusing)
-        self.test.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
-        self.test.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
-        self.test.restartFocusingSignal.connect(self.focusController.restartFocusing)
-        self.test.resDeviceConnected.connect(self.focusController.onResDeviceConnected)
-        self.test.resMoveStage.connect(self.focusController.onResMoveStage)
-        self.test.resStopStage.connect(self.focusController.onResStopStage)
-        self.test.resGetSpectrum.connect(self.focusController.onResGetSpectrum)
-        self.test.exePositionOver.connect(self.focusController.onExePositionOver)
-
-    def initUI(self):
-        central_widget = QWidget()
-        layout = QVBoxLayout(central_widget)
-
-        logWindow = LogWindow()
-        btnInit = QPushButton("initFocusing")
-        btn1 = QPushButton("Resume")
-        btn2 = QPushButton("Pause")
-        btn3 = QPushButton("ReStart")
-
-        btnInit.clicked.connect(self.test.initFocusing)
-        btn1.clicked.connect(self.test.resumeFocusing)
-        btn2.clicked.connect(self.test.pauseFocusing)
-        btn3.clicked.connect(self.test.restartFocusing)
-        self.test.logMessage.connect(logWindow.append_log)
-        self.test.initWithLog()
-
-        layout.addWidget(btnInit)
-        layout.addWidget(btn1)
-        layout.addWidget(btn2)
-        layout.addWidget(btn3)
-        layout.addWidget(logWindow)
-        self.setCentralWidget(central_widget)
-
-    def closeEvent(self, event):
-        self.test.close()
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress:
-            key = event.key()
-            print(f"key: {key}, {type(key)}")
-            if key == 51:
-                self.test.resumeFocusing()
-            elif key == 50:
-                self.test.pauseFocusing()
-            elif key == 49:
-                self.test.restartFocusing()
-
-        return super().eventFilter(obj, event)
+            self.checkMoving(idx, printLog, True)
+            self.stage[idx].stop(immediate=False)
 
 
-if __name__ == "__main__":
-    app = QApplication([])
-    window = Window()
-    window.installEventFilter(window)
-    window.show()
-    app.exec()
+class CanNotDetectSomeDevicesException(Exception):
+    def __init__(self):
+        super().__init__("모든 스테이지가 정상적으로 연결되었는지 확인하세요.")

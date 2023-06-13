@@ -29,7 +29,7 @@ class Stage(QThread):
     stageMovedSignal = Signal(int, float)
     errCannotDetect = Signal(str)
     errPositionLimit = Signal(str)
-    nomalLogSignal = Signal(str)
+    normalLogSignal = Signal(str)
 
     homeTimer = QTimer()
     driveTimer0 = QTimer()
@@ -229,7 +229,7 @@ class Stage(QThread):
     def checkMoving1(self): self.checkMoving(1)
     def checkMoving2(self): self.checkMoving(2)
 
-    def checkMoving(self, idx, printLog=False):
+    def checkMoving(self, idx, printLog=False, forStop=False):
         METHOD = "[checkMoving]"
         if self.numberOfStages < idx:
             self.errCannotDetect.emit(f"{TAG}#{idx} {METHOD}스테이지를 찾을 수 없습니다.")
@@ -249,9 +249,11 @@ class Stage(QThread):
                 self.moveTimer1.stop()
             else:
                 self.moveTimer2.stop()
-            #self.nomalLogSignal.emit(f"{TAG}#{idx} {METHOD} 이동완료 position: {self.getPosition(idx)}")
-            self.stageMovedSignal.emit(idx, self.getPosition(idx))
-            self.stoppedSignal.emit(idx, self.getPosition(idx))
+            #self.normalLogSignal.emit(f"{TAG}#{idx} {METHOD} 이동완료 position: {self.getPosition(idx)}")
+            if forStop:
+                self.stoppedSignal.emit(idx, self.getPosition(idx))
+            else:
+                self.stageMovedSignal.emit(idx, self.getPosition(idx))
 
     def stopMove(self, idx, printLog=False):
         METHOD = "[stopMove]"
@@ -261,7 +263,7 @@ class Stage(QThread):
 
         self.stoppingSignal.emit(idx)
 
-        self.checkMoving(idx, printLog)
+        self.checkMoving(idx, printLog, True)
         self.stage[idx].stop(immediate=False)
 
 

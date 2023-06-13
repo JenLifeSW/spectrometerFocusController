@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, QTimer
 
 TAG = "     포커스 모듈 : "
 
@@ -17,8 +17,18 @@ class Command:
     RESTART = 3
 
 
+class StepRange:
+    step = [-use_um(1562), -use_um(625), -use_um(250), -use_um(50), -use_um(10)]
+    targetPointCnt = [6, 6, 6, 11, 11]
+
+    def getStepRange(self, num):
+        return self.step[num:], self.targetPointCnt[num:]
+
+
 class FocusController(QObject):
     testing = False
+
+    normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
 
     alreadyRunningSignal = Signal()
@@ -32,8 +42,10 @@ class FocusController(QObject):
     reqMoveStage = Signal(float)
     reqGetSpectrum = Signal()
 
-    step = [-use_um(1562), -use_um(625), -use_um(250), -use_um(50), -use_um(10)]
-    targetPointCnt = [6, 6, 6, 11, 11]
+    # step = [-use_um(1562), -use_um(625), -use_um(250), -use_um(50), -use_um(10)]
+    # targetPointCnt = [6, 6, 6, 11, 11]
+    step, targetPointCnt = StepRange().getStepRange(1)
+
     conReqCnt = 0
     errCnt = 0
     lastCommand = 0
@@ -47,6 +59,12 @@ class FocusController(QObject):
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
     roundData = []          # 해당 라운드에서 이동하면서 수집한 데이터 [("position": "intensity")]
 
+    ''' 스펙트럼 오차 보완용 재측정 '''
+    measure = 15         # 목표 재측정 횟수
+    measureCnt = 0      # 누적 횟수
+    measureInterval = 1    # 재측정 간격 (ms)
+    tempSumOfIntensities = 0.0    # 스펙트럼 평균
+
     def __init__(self, startPosition=startPosition, testing=False):
         super().__init__()
         print(f"{TAG}1 init")
@@ -58,6 +76,11 @@ class FocusController(QObject):
     def setStartPosition(self, startPosition):
         self.startPosition = startPosition
 
+    @Slot(int, int)
+    def setMeasure(self, mesure, measureInterval):
+        self.measure = mesure
+        self.measureInterval = measureInterval
+
     def initFocusing(self):
         print(f"{TAG}2 initFocusing")
 
@@ -66,9 +89,10 @@ class FocusController(QObject):
         self.isPaused = False
         self.round = 0
 
-        self.targetPosition = self.startPosition
-        self.pointCnt = 0
-        self.roundData = []
+        self.initRound(self.startPosition)
+        # self.targetPosition = self.startPosition
+        # self.pointCnt = 0
+        # self.roundData = []
 
         self.reqMoveStage.emit(self.targetPosition)
 
@@ -80,6 +104,12 @@ class FocusController(QObject):
         self.targetPosition = targetPosition
         self.pointCnt = 0
         self.roundData = []
+        self.initMeasureCnt()
+
+    def initMeasureCnt(self):
+        self.measureCnt = 1
+        self.tempSumOfIntensities = 0.0
+
 
     @Slot()
     def resumeFocusing(self):
@@ -177,40 +207,61 @@ class FocusController(QObject):
         self.reqGetSpectrum.emit()
 
     @Slot(float)
-    def onResGetSpectrum(self, intensity):
+    def onResGetSpectrum(self, intensities):
         METHOD = "9 ResGetSpectrum "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
         if self.isPaused or not self.isRunning:
             return
-        print(f"{TAG}{METHOD}intensity: {intensity}")
+
+        self.tempSumOfIntensities += intensities
+
+        if self.measureCnt < self.measure:
+            QTimer.singleShot(self.measureInterval, self.reqGetSpectrum.emit)
+            self.measureCnt += 1
+            return
 
         position = self.arrivePosition
-        self.roundData.append((position, intensity))
+        self.roundData.append((position, self.tempSumOfIntensities / self.measure))
+
         if self.pointCnt < self.targetPointCnt[self.round] - 1:
             self.pointCnt += 1
+            self.initMeasureCnt()
             self.targetPosition = position + self.step[self.round]
             print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
 
             self.reqMoveStage.emit(self.targetPosition)
             return
 
-        intensities = [data[1] for data in self.roundData]
-        maxIdx = intensities.index(max(intensities))
+        intensitiesList = [data[1] for data in self.roundData]
+        maxIdx = intensitiesList.index(max(intensitiesList))
 
-        print(f"{TAG}{METHOD}라운드: {self.round}, data: {self.roundData}, maxIds: {maxIdx}")
-        if self.round < 4:
+        #self.normalLogSignal.emit(f"{TAG}{METHOD}라운드: {self.round} maxIdx: {maxIdx} max value: {round(intensitiesList[maxIdx], 3)}")
+        if self.round == len(self.targetPointCnt) - 1:
+            for i, d in enumerate(self.roundData):
+                log = f"{TAG}{METHOD}라운드: {self.round}, position: {round(d[0] * 1000, 3)}, intensities: {round(d[1], 3)}"
+                if i == maxIdx: log += "\tmax"
+                self.normalLogSignal.emit(log)
+
+        if self.round < len(self.targetPointCnt) - 1:
 
             if not (maxIdx == 0 or maxIdx == self.targetPointCnt[self.round] - 1):
                 targetPosition = self.roundData[maxIdx][0] - self.step[self.round]
                 self.round += 1
                 self.initRound(targetPosition)
-                print(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
+                self.normalLogSignal.emit(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
                 self.reqMoveStage.emit(self.targetPosition)
                 return
 
             if self.round == 0:
-                if maxIdx != 0:
-                    print(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveStage to {self.targetPosition}")
+                if maxIdx == 0:
+                    self.round += 1
+                    self.initRound(self.startPosition)
+                    self.normalLogSignal.emit(f"{TAG}{METHOD}First is Max. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
+                    self.reqMoveStage.emit(self.targetPosition)
+                    return
+
+                else:
+                    self.normalLogSignal.emit(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveStage to {self.targetPosition}")
                     targetPosition = position - 2 * self.step[0]
                     self.initRound(targetPosition)
                     self.reqMoveStage.emit(self.targetPosition)
