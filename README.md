@@ -4,7 +4,7 @@
 
 ## Dependency
 
-- deviceAPIs v 1.3.1
+- deviceAPIs v 1.4.0
 
 ### Signals
 
