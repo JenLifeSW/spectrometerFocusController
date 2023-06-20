@@ -110,6 +110,18 @@ class Stage(QThread):
     def isEnabled(self, idx):
         return "enabled" in self.stage[idx].get_status()
 
+    def isMoving(self, idx):
+        status = self.stage[idx].get_status()
+        if (
+                "moving_fw" not in status and
+                "moving_bk" not in status and
+                "jogging_fw" not in status and
+                "jogging_bk" not in status
+        ):
+            return False
+        else:
+            return True
+
     def getPosition(self, idx):
         return self.stage[idx].get_position()
 

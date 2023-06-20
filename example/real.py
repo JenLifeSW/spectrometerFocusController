@@ -1,12 +1,14 @@
+import csv
 from datetime import datetime
 
 import numpy as np
 
 from deviceAPIs import Laser, Spectrometer, Stage
+from example.setting import Setting
 
 from focusController import FocusController
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, \
-    QSpinBox, QLabel
+    QSpinBox, QLabel, QDoubleSpinBox, QDialog
 from PySide6.QtCore import QObject, Signal, Slot, QEvent
 from PySide6.QtGui import QTextCursor
 
@@ -22,6 +24,10 @@ def use_um(value):
     return value/1000000
 
 
+def m_to_Mm(value):
+    return int(value * 1000000)
+
+
 stageSettings = {
     "bottom": use_mm(3),
     "top": use_mm(17),
@@ -33,11 +39,45 @@ stageSettings = {
 class FocusControllerTest(QObject):
     targetPosition = 0.0
     isPaused = False
-
+    flag = True
     laserConnected = False
     specConnected = False
     stageConnected = False
     # stageSetted = False
+
+    # step = [
+    #     [0.1, 1, 1],
+    #     [1, 1, 1]
+    # ]
+
+    # [0.5, 10, 50],
+    # [1.0, 1, 50],
+    # [1.0, 2, 50],
+    # [1.0, 5, 50],
+    # [1.0, 10, 50],
+    # [1.0, 15, 50],
+
+    ''' intergration, measure, repeat, sliced '''
+    step = [
+        # [3.0, 1, 50],
+        # [3.0, 5, 50],
+        [5.0, 1, 50],
+        [5.0, 2, 50],
+        [5.0, 3, 50],
+        [10.0, 1, 50],
+        [10.0, 2, 50],
+        [15.0, 1, 50],
+        [15.0, 2, 50],
+        [20.0, 1, 50],
+        [20.0, 2, 50]
+    ]
+    currentStep = 0
+    repeatCnt = 1
+    errCnts = []
+    datas = []
+    stepDatas = []
+    errCnt = 0
+    setMeasureSignal = Signal(int)
 
     laser = Laser()
     spec = Spectrometer()
@@ -104,6 +144,11 @@ class FocusControllerTest(QObject):
             )
         else:
             self.log_print(f"{TIME()} {TAG} 스테이지 초기화 실패")
+        if self.specConnected:
+            self.spec.setIntegrationTime(100000)
+        else:
+            self.log_print(f"{TIME()} {TAG} 스펙트로 미터 초기화 실패")
+
         #self.initConnect()
         self.initFocusing()
 
@@ -112,8 +157,17 @@ class FocusControllerTest(QObject):
         self.spec.close()
         self.stage.close()
 
+    @Slot(list)
+    def setStep(self, step):
+        print(f"setStep: {step}")
+        self.step = step
+
+
     @Slot(str, bool)
     def log_print(self, message, log=True):
+        if message == "데이터 비정상":
+            self.errCnt += 1
+
         self.statusMessage.emit(message)
         if log:
             self.logMessage.emit(message)
@@ -128,6 +182,14 @@ class FocusControllerTest(QObject):
         #self.stage.stages[0].home()
         #self.reqMoveStage.emit(0, limit[0] * -1)
         #self.reqMoveStage.emit(0, stageSettings["top"])
+        self.repeatCnt = 1
+        self.errCnt = 0
+        self.errCnts = []
+        self.datas = []
+        self.stepDatas = []
+        self.spec.setIntegrationTime(m_to_Mm(self.step[self.currentStep][0]))
+        self.setMeasureSignal.emit(self.step[self.currentStep][1])
+
         self.initFocusingSignal.emit()
 
     @Slot(bool)
@@ -160,10 +222,14 @@ class FocusControllerTest(QObject):
     @Slot(str)
     def onErrCannotDetect(self, msg):
         self.log_print(f"{TIME()} {TAG} {msg}")
+        self.errCnt += 1
+        self.restartFocusing()
 
     @Slot(str)
     def onErrPositionLimit(self, msg):
         self.log_print(f"{TIME()} {TAG} {msg}")
+        self.errCnt += 1
+        self.restartFocusing()
 
     ''' 포커싱 '''
     # 베이직 시그널
@@ -190,9 +256,52 @@ class FocusControllerTest(QObject):
     @Slot(list, int)
     def onFocusCompleteSignal(self, roundData, focusPosition):
         focus = roundData[focusPosition]
-        #self.log_print(f"\n{TIME()} {TAG} 포커싱 완료, {roundData}, {focusPosition}")
+        repeatNumber = self.step[self.currentStep][2]
         self.log_print("="*80)
-        self.log_print(f"{TIME()} {TAG} 포커싱 완료, position: {round(focus[0] * 1000, 3)}, value: {round(focus[1], 3)}")
+        self.log_print(f"{TIME()} {TAG} 포커싱 완료[{self.repeatCnt}/{repeatNumber}], position: {round(focus[0] * 1000, 3)}, value: {round(focus[1], 3)}  step{self.currentStep}")
+        self.datas.append(focus)
+
+
+        if self.repeatCnt < repeatNumber:
+            self.repeatCnt += 1
+            self.restartFocusing()
+        else:
+            self.log_print("※"*80)
+            self.log_print(f"{TIME()} {TAG} 반복 완료[{self.repeatCnt}/{repeatNumber}] step[{self.currentStep+1}/{len(self.step)}]")
+            for data in self.datas:
+                position = round(data[0] * 1000, 3)
+                self.log_print(f"position: {'{:.3f}'.format(position)}\t value: {round(data[1], 3)}")
+            self.repeatCnt = 1
+            self.errCnt = 0
+            self.stepDatas.append(self.datas)
+            self.errCnts.append(self.errCnt)
+            self.datas = []
+
+            with open(f"3step{self.currentStep}.txt", "w", encoding="UTF-8") as f:
+                step = self.step[self.currentStep]
+                f.write(f"step#{self.currentStep}      intergration time: {step[0]}       측정: {step[1]}      반복: {step[2]}     비정상재측정:{self.errCnts[self.currentStep]}")
+                for data in self.stepDatas[-1]:
+                    position = round(data[0] * 1000, 3)
+                    f.write(f"position: {'{:.3f}'.format(position)}\t value: {round(data[1], 3)}\n")
+
+            if self.currentStep < len(self.step) - 1:
+                self.log_print("＠"*80)
+                self.log_print(f"{TIME()} {TAG} 스텝 완료[{self.currentStep+1}/{len(self.step)}]")
+                self.currentStep += 1
+                self.spec.setIntegrationTime(m_to_Mm(self.step[self.currentStep][0]))
+                self.setMeasureSignal.emit(self.step[self.currentStep][1])
+                self.restartFocusing()
+            else:
+                self.log_print("★"*80)
+                self.log_print(f"{TIME()} {TAG} 테스트 완료[{self.currentStep+1}/{len(self.step)}]")
+
+                for idx, datas in enumerate(self.stepDatas):
+                    step = self.step[idx]
+                    self.log_print(f"step#{idx}      intergration time: {step[0]}       측정: {step[1]}      반복: {step[2]}     비정상재측정:{self.errCnts[idx]}")
+                    for data in datas:
+                        position = round(data[0] * 1000, 3)
+                        self.log_print(f"position: {'{:.3f}'.format(position)}\t value: {round(data[1], 3)}")
+
 
     # 기기 응답에 따라 포커싱알고리즘에 응답
     @Slot()
@@ -218,13 +327,25 @@ class FocusControllerTest(QObject):
 
     def onReqStopStage(self):
         self.log_print(f"\n{TIME()} {TAG} 기기 중지 요청 감지\n")
-        self.reqStopStage.emit(0)
+        if self.stage.isMoving(0):
+            self.reqStopStage.emit(0)
+            return
 
     def onReqGetSpectrum(self):
+        print(f"스펙트럼요청{TIME()}")
         intensities = self.spec.getSpectrum()
+        print(f"스펙트럼응답{TIME()}")
+        # self.log_print(f"{TIME()} {TAG} ***** 스펙트럼 ***** {str(intensities)}")
+        # if self.flag:
+        #     f = open("out.csv", "w")
+        #     writer = csv.writer(f)
+        #     writer.writerows(intensities)
+        #     f.close
+        #     self.flag = False
+
         #average = sum(intensities) / len(intensities)
-        average = np.mean(intensities)
-        self.log_print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지 {average}", False)
+        average = np.mean(intensities[1])
+        # self.log_print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지 {average}", False)
         self.resGetSpectrum.emit(average)
 
     # 포커싱알고리즘 응답에 따라 기기에 응답
@@ -234,8 +355,8 @@ class FocusControllerTest(QObject):
         self.resMoveStage.emit(position)
         #self.reqRamanShift.emit(633.0)
 
-    @Slot(int)
-    def onResStopStage(self, idx):
+    @Slot(int, float)
+    def onResStopStage(self, idx, position):
         # self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
         self.resStopStage.emit()
 
@@ -252,12 +373,12 @@ class StatusWindow(QTextEdit):
 
     def append_log(self, message):
         line = self.document().blockCount()
-        print(line)
-        if line > 4:
+        # print(line)
+        if line > 500:
             OP = QTextCursor.MoveOperation
             cursor = self.textCursor()
             cursor.movePosition(OP.Start)
-            for _ in range(line - 4):
+            for _ in range(line - 100):
                 cursor.movePosition(OP.Down, QTextCursor.MoveMode.KeepAnchor)
             cursor.removeSelectedText()
 
@@ -282,17 +403,16 @@ class Window(QMainWindow):
     focusController.setStartPosition(stageSettings["top"])
     test = FocusControllerTest()
 
-    setMeasureSignal = Signal(int, int)
-
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.setting = Setting(self)
+        self.setting.initStep(self.test.step)
         self.initDevice()
         self.initUI()
 
     def initDevice(self):
 
-        self.setMeasureSignal.connect(self.focusController.setMeasure)
         self.focusController.normalLogSignal.connect(self.test.log_print)
         self.focusController.alreadyRunningSignal.connect(self.test.onAlreadyRunningSignal)
         self.focusController.alreadyStoppedSignal.connect(self.test.onAlreadyStoppedSignal)
@@ -318,27 +438,10 @@ class Window(QMainWindow):
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
 
-        widStatus = StatusWindow()
-        widLog = LogWindow()
-
-        ''' setMeasure '''
-        lytSetMeasure = QHBoxLayout()
-        lbSetMeasure = QLabel("현위치 측정횟수")
-        lbSetMeasureInterval = QLabel("측정 간격")
-        self.sboxSetMeasure = QSpinBox()
-        self.sboxSetMeasure.setRange(1, 100)
-        self.sboxSetMeasure.setValue(self.focusController.measure)
-        self.sboxSetMeasureInterval = QSpinBox()
-        self.sboxSetMeasureInterval.setRange(1, 1000)
-        self.sboxSetMeasureInterval.setValue(self.focusController.measureInterval)
-        btnSetMeasure = QPushButton("setMeasure")
-        lytSetMeasure.addWidget(lbSetMeasure)
-        lytSetMeasure.addWidget(self.sboxSetMeasure)
-        lytSetMeasure.addWidget(lbSetMeasureInterval)
-        lytSetMeasure.addWidget(self.sboxSetMeasureInterval)
-        lytSetMeasure.addWidget(btnSetMeasure)
-        btnSetMeasure.clicked.connect(self.setMeasure)
-        layout.addLayout(lytSetMeasure)
+        btnSetting = QPushButton("테스트 설정")
+        btnSetting.clicked.connect(self.openSetting)
+        layout.addWidget(btnSetting)
+        self.test.setMeasureSignal.connect(self.setMeasure)
 
         ''' 포커싱 '''
         btnInit = QPushButton("initFocusing")
@@ -350,6 +453,9 @@ class Window(QMainWindow):
         btn1.clicked.connect(self.test.resumeFocusing)
         btn2.clicked.connect(self.test.pauseFocusing)
         btn3.clicked.connect(self.test.restartFocusing)
+
+        widStatus = StatusWindow()
+        widLog = LogWindow()
         self.test.statusMessage.connect(widStatus.append_log)
         self.test.logMessage.connect(widLog.append_log)
         self.test.initConnect()
@@ -378,10 +484,12 @@ class Window(QMainWindow):
 
         return super().eventFilter(obj, event)
 
-    def setMeasure(self):
-        measure = self.sboxSetMeasure.value()
-        interval = self.sboxSetMeasureInterval.value()
-        self.setMeasureSignal.emit(measure, interval)
+    def openSetting(self):
+        self.setting.show()
+
+    @Slot(int)
+    def setMeasure(self, measureTime):
+        self.focusController.setMeasure(measureTime)
 
 
 if __name__ == "__main__":
