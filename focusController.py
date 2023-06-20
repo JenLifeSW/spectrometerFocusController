@@ -27,6 +27,7 @@ class StepRange:
 
 class FocusController(QObject):
     testing = False
+    isCompleted = False
 
     normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
@@ -84,22 +85,14 @@ class FocusController(QObject):
 
         if restart:
             self.isRunning = True
-            self.isPaused = False
-            self.round = 0
-            self.initRound(self.startPosition)
-            self.reqMoveStage.emit(self.targetPosition)
-            return
+        else:
+            self.lastCommand = 0
+            self.isRunning = False
 
-        self.lastCommand = 0
-        self.isRunning = False
         self.isPaused = False
         self.round = 0
 
         self.initRound(self.startPosition)
-        # self.targetPosition = self.startPosition
-        # self.pointCnt = 0
-        # self.roundData = []
-
         self.reqMoveStage.emit(self.targetPosition)
 
         if self.testing:
@@ -138,7 +131,12 @@ class FocusController(QObject):
             print(f"{TAG}4 resumeFocusing, paused -> resume")
 
         print(f"{TAG}4 resumeFocusing, reqDeviceConnected 요청")
-        self.reqDeviceConnected.emit()
+
+        if self.isCompleted:
+            self.isCompleted = False
+            self.restartFocusing()
+        else:
+            self.reqDeviceConnected.emit()
 
     @Slot()
     def pauseFocusing(self):
@@ -166,11 +164,8 @@ class FocusController(QObject):
             self.reqDeviceConnected.emit()
             return
 
-        # self.reqIsMoving.emit()
         self.isPaused = True
-        # self.reqStopStage.emit()
         self.initFocusing(True)
-
 
     def exceptionHandling(self):
         METHOD = "7 exceptionHandling "
@@ -284,6 +279,7 @@ class FocusController(QObject):
         else:
             print(f"{TAG}{METHOD}포커싱 완료")
             self.isRunning = False
+            self.isCompleted = True
             self.focusCompleteSignal.emit(self.roundData, maxIdx)
 
     @Slot(float, float)
@@ -330,7 +326,3 @@ class FocusController(QObject):
     @Slot()
     def onResStopStage(self):
         print(f"{TAG}11 onResStopStage")
-        if self.lastCommand == Command.RESTART:
-            self.initFocusing()
-            self.isRunning = True
-            # self.reqMoveStage.emit(self.targetPosition)

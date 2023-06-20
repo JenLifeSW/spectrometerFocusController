@@ -36,48 +36,10 @@ stageSettings = {
 }
 
 
-class FocusControllerTest(QObject):
-    targetPosition = 0.0
-    isPaused = False
-    flag = True
+class FocusControllerExam(QObject):
     laserConnected = False
     specConnected = False
     stageConnected = False
-    # stageSetted = False
-
-    # step = [
-    #     [0.1, 1, 1],
-    #     [1, 1, 1]
-    # ]
-
-    # [0.5, 10, 50],
-    # [1.0, 1, 50],
-    # [1.0, 2, 50],
-    # [1.0, 5, 50],
-    # [1.0, 10, 50],
-    # [1.0, 15, 50],
-
-    ''' intergration, measure, repeat, sliced '''
-    step = [
-        # [3.0, 1, 50],
-        # [3.0, 5, 50],
-        [5.0, 1, 50],
-        [5.0, 2, 50],
-        [5.0, 3, 50],
-        [10.0, 1, 50],
-        [10.0, 2, 50],
-        [15.0, 1, 50],
-        [15.0, 2, 50],
-        [20.0, 1, 50],
-        [20.0, 2, 50]
-    ]
-    currentStep = 0
-    repeatCnt = 1
-    errCnts = []
-    datas = []
-    stepDatas = []
-    errCnt = 0
-    setMeasureSignal = Signal(int)
 
     laser = Laser()
     spec = Spectrometer()
@@ -115,8 +77,8 @@ class FocusControllerTest(QObject):
         # 기기 -> 테스트모듈 일반시그널
         self.stage.stageMovedSignal.connect(self.onResMoveStage)
         self.stage.stoppedSignal.connect(self.onResStopStage)
-        self.stage.errCannotDetect.connect(self.onErrCannotDetect)
-        self.stage.errPositionLimit.connect(self.onErrPositionLimit)
+        self.stage.errCannotDetect.connect(self.onErrorSignal)
+        self.stage.errPositionLimit.connect(self.onErrorSignal)
 
         # 기기 -> 테스트모듈 응답
         self.laser.connectedSignal.connect(self.onLaserConnected)
@@ -149,19 +111,12 @@ class FocusControllerTest(QObject):
         else:
             self.log_print(f"{TIME()} {TAG} 스펙트로 미터 초기화 실패")
 
-        #self.initConnect()
         self.initFocusing()
 
     def close(self):
         self.laser.close()
         self.spec.close()
         self.stage.close()
-
-    @Slot(list)
-    def setStep(self, step):
-        print(f"setStep: {step}")
-        self.step = step
-
 
     @Slot(str, bool)
     def log_print(self, message, log=True):
@@ -179,17 +134,6 @@ class FocusControllerTest(QObject):
     ''' 모듈 '''
     def initFocusing(self):
         self.log_print(f"\n{TIME()} {TAG} initFocusing 버튼")
-        #self.stage.stages[0].home()
-        #self.reqMoveStage.emit(0, limit[0] * -1)
-        #self.reqMoveStage.emit(0, stageSettings["top"])
-        self.repeatCnt = 1
-        self.errCnt = 0
-        self.errCnts = []
-        self.datas = []
-        self.stepDatas = []
-        self.spec.setIntegrationTime(m_to_Mm(self.step[self.currentStep][0]))
-        self.setMeasureSignal.emit(self.step[self.currentStep][1])
-
         self.initFocusingSignal.emit()
 
     @Slot(bool)
@@ -220,16 +164,8 @@ class FocusControllerTest(QObject):
             self.stageConnected = False
 
     @Slot(str)
-    def onErrCannotDetect(self, msg):
+    def onErrorSignal(self, msg):
         self.log_print(f"{TIME()} {TAG} {msg}")
-        self.errCnt += 1
-        self.restartFocusing()
-
-    @Slot(str)
-    def onErrPositionLimit(self, msg):
-        self.log_print(f"{TIME()} {TAG} {msg}")
-        self.errCnt += 1
-        self.restartFocusing()
 
     ''' 포커싱 '''
     # 베이직 시그널
@@ -244,6 +180,7 @@ class FocusControllerTest(QObject):
     def restartFocusing(self):
         self.log_print(f"\n{TIME()} {TAG} restartFocusing 버튼")
         self.restartFocusingSignal.emit()
+
     # 베이직 시그널 응답
     @Slot()
     def onAlreadyRunningSignal(self):
@@ -256,9 +193,110 @@ class FocusControllerTest(QObject):
     @Slot(list, int)
     def onFocusCompleteSignal(self, roundData, focusPosition):
         focus = roundData[focusPosition]
-        repeatNumber = self.step[self.currentStep][2]
         self.log_print("="*80)
-        self.log_print(f"{TIME()} {TAG} 포커싱 완료[{self.repeatCnt}/{repeatNumber}], position: {round(focus[0] * 1000, 3)}, value: {round(focus[1], 3)}  step{self.currentStep}")
+        self.log_print(f"{TIME()} {TAG} 포커싱 완료, position: {round(focus[0] * 1000, 3)}, value: {round(focus[1], 3)}")
+
+
+    # 기기 응답에 따라 포커싱알고리즘에 응답
+    @Slot()
+    def onReqDeviceConnected(self):
+        self.log_print(f"{TIME()} {TAG} 기기 연결 확인 요청 감지 laser: {self.laserConnected}, spec: {self.specConnected}, stage: {self.stageConnected}\n")
+        if (self.laserConnected and self.specConnected and self.stageConnected):
+            self.resDeviceConnected.emit(True)
+        else:
+            self.resDeviceConnected.emit(False)
+
+    @Slot()
+    def onReqConnectDevice(self):
+        self.log_print(f"{TIME()} {TAG} 기기 연결 요청 감지\n")
+        ''' 
+        Todo: 연결안된 기기 파악하여 연결
+        '''
+
+    @Slot(float)
+    def onReqMoveStage(self, position):
+        self.log_print(f"{TIME()} {TAG} 스테이지 이동 요청 감지: {round(position * 1000, 6)}", False)
+        self.reqMoveStage.emit(0, position)
+
+    def onReqStopStage(self):
+        self.log_print(f"\n{TIME()} {TAG} 기기 중지 요청 감지\n")
+        if self.stage.isMoving(0):
+            self.reqStopStage.emit(0)
+            return
+
+    def onReqGetSpectrum(self):
+        intensities = self.spec.getSpectrum()
+        average = np.mean(intensities[1])
+        self.resGetSpectrum.emit(average)
+
+    # 포커싱알고리즘 응답에 따라 기기에 응답
+    @Slot(int, float)
+    def onResMoveStage(self, idx, position):
+        self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 이동 완료", False)
+        self.resMoveStage.emit(position)
+
+    @Slot(int, float)
+    def onResStopStage(self, idx, position):
+        # self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
+        self.resStopStage.emit()
+
+    @Slot(str)
+    def onfocusDisabledErr(self, errMsg):
+        self.log_print(f"{TIME()} {TAG} 에러 발생 : {errMsg}")
+
+
+class FocusControllerTest(FocusControllerExam):
+    ''' intergration, measure, repeat, sliced '''
+    step = [
+        [1, 1, 1]
+        # [5.0, 1, 50],
+        # [5.0, 2, 50],
+        # [5.0, 3, 50],
+        # [10.0, 1, 50],
+        # [10.0, 2, 50],
+        # [15.0, 1, 50],
+        # [15.0, 2, 50],
+        # [20.0, 1, 50],
+        # [20.0, 2, 50]
+    ]
+    currentStep = 0
+    repeatCnt = 1
+    errCnts = []
+    datas = []
+    stepDatas = []
+    errCnt = 0
+    setMeasureSignal = Signal(int)
+
+    def __init__(self):
+        super().__init__()
+
+    def initConnect(self):
+        super().initConnect()
+
+    def initFocusing(self):
+        self.stage.home()
+        self.repeatCnt = 1
+        self.errCnt = 0
+        self.errCnts = []
+        self.datas = []
+        self.stepDatas = []
+        self.spec.setIntegrationTime(m_to_Mm(self.step[self.currentStep][0]))
+        self.setMeasureSignal.emit(self.step[self.currentStep][1])
+
+        super().initFocusing()
+
+    @Slot(list)
+    def setStep(self, step):
+        print(f"setStep: {step}")
+        self.step = step
+
+
+    @Slot(list, int)
+    def onFocusCompleteSignal(self, roundData, focusPosition):
+        super().onFocusCompleteSignal(roundData, focusPosition)
+
+        focus = roundData[focusPosition]
+        repeatNumber = self.step[self.currentStep][2]
         self.datas.append(focus)
 
 
@@ -303,68 +341,6 @@ class FocusControllerTest(QObject):
                         self.log_print(f"position: {'{:.3f}'.format(position)}\t value: {round(data[1], 3)}")
 
 
-    # 기기 응답에 따라 포커싱알고리즘에 응답
-    @Slot()
-    def onReqDeviceConnected(self):
-        self.log_print(f"{TIME()} {TAG} 기기 연결 확인 요청 감지 laser: {self.laserConnected}, spec: {self.specConnected}, stage: {self.stageConnected}\n")
-        if (self.laserConnected and self.specConnected and self.stageConnected):
-            self.resDeviceConnected.emit(True)
-        else:
-            self.resDeviceConnected.emit(False)
-
-    @Slot()
-    def onReqConnectDevice(self):
-        self.log_print(f"{TIME()} {TAG} 기기 연결 요청 감지\n")
-        ''' 
-        Todo: 연결안된 기기 파악하여 연결
-        '''
-
-    @Slot(float)
-    def onReqMoveStage(self, position):
-        self.log_print(f"{TIME()} {TAG} 스테이지 이동 요청 감지: {round(position * 1000, 6)}", False)
-        self.targetPosition = position
-        self.reqMoveStage.emit(0, position)
-
-    def onReqStopStage(self):
-        self.log_print(f"\n{TIME()} {TAG} 기기 중지 요청 감지\n")
-        if self.stage.isMoving(0):
-            self.reqStopStage.emit(0)
-            return
-
-    def onReqGetSpectrum(self):
-        print(f"스펙트럼요청{TIME()}")
-        intensities = self.spec.getSpectrum()
-        print(f"스펙트럼응답{TIME()}")
-        # self.log_print(f"{TIME()} {TAG} ***** 스펙트럼 ***** {str(intensities)}")
-        # if self.flag:
-        #     f = open("out.csv", "w")
-        #     writer = csv.writer(f)
-        #     writer.writerows(intensities)
-        #     f.close
-        #     self.flag = False
-
-        #average = sum(intensities) / len(intensities)
-        average = np.mean(intensities[1])
-        # self.log_print(f"{TIME()} {TAG} 스펙트럼 정보 요청 감지 {average}", False)
-        self.resGetSpectrum.emit(average)
-
-    # 포커싱알고리즘 응답에 따라 기기에 응답
-    @Slot(int, float)
-    def onResMoveStage(self, idx, position):
-        self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 이동 완료", False)
-        self.resMoveStage.emit(position)
-        #self.reqRamanShift.emit(633.0)
-
-    @Slot(int, float)
-    def onResStopStage(self, idx, position):
-        # self.log_print(f"{TIME()} {TAG} 스테이지 #{idx} 정지")
-        self.resStopStage.emit()
-
-    @Slot(str)
-    def onfocusDisabledErr(self, errMsg):
-        self.log_print(f"{TIME()} {TAG} 에러 발생 : {errMsg}")
-
-
 class StatusWindow(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -401,38 +377,39 @@ class LogWindow(QTextEdit):
 class Window(QMainWindow):
     focusController = FocusController(testing=True)
     focusController.setStartPosition(stageSettings["top"])
-    test = FocusControllerTest()
+    exam = FocusControllerTest()
+    # exam = FocusControllerExam()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.setting = Setting(self)
-        self.setting.initStep(self.test.step)
+        self.setting.initStep(self.exam.step)
         self.initDevice()
         self.initUI()
 
     def initDevice(self):
 
-        self.focusController.normalLogSignal.connect(self.test.log_print)
-        self.focusController.alreadyRunningSignal.connect(self.test.onAlreadyRunningSignal)
-        self.focusController.alreadyStoppedSignal.connect(self.test.onAlreadyStoppedSignal)
-        self.focusController.focusCompleteSignal.connect(self.test.onFocusCompleteSignal)
-        self.focusController.reqDeviceConnected.connect(self.test.onReqDeviceConnected)
-        self.focusController.reqConnectDevice.connect(self.test.onReqConnectDevice)
-        self.focusController.reqMoveStage.connect(self.test.onReqMoveStage)
-        self.focusController.reqStopStage.connect(self.test.onReqStopStage)
-        self.focusController.reqGetSpectrum.connect(self.test.onReqGetSpectrum)
-        self.focusController.focusDisabledErr.connect(self.test.onfocusDisabledErr)
+        self.focusController.normalLogSignal.connect(self.exam.log_print)
+        self.focusController.alreadyRunningSignal.connect(self.exam.onAlreadyRunningSignal)
+        self.focusController.alreadyStoppedSignal.connect(self.exam.onAlreadyStoppedSignal)
+        self.focusController.focusCompleteSignal.connect(self.exam.onFocusCompleteSignal)
+        self.focusController.reqDeviceConnected.connect(self.exam.onReqDeviceConnected)
+        self.focusController.reqConnectDevice.connect(self.exam.onReqConnectDevice)
+        self.focusController.reqMoveStage.connect(self.exam.onReqMoveStage)
+        self.focusController.reqStopStage.connect(self.exam.onReqStopStage)
+        self.focusController.reqGetSpectrum.connect(self.exam.onReqGetSpectrum)
+        self.focusController.focusDisabledErr.connect(self.exam.onfocusDisabledErr)
 
-        self.test.initFocusingSignal.connect(self.focusController.initFocusing)
-        self.test.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
-        self.test.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
-        self.test.restartFocusingSignal.connect(self.focusController.restartFocusing)
-        self.test.resDeviceConnected.connect(self.focusController.onResDeviceConnected)
-        self.test.resMoveStage.connect(self.focusController.onResMoveStage)
-        self.test.resStopStage.connect(self.focusController.onResStopStage)
-        self.test.resGetSpectrum.connect(self.focusController.onResGetSpectrum)
-        self.test.exePositionOver.connect(self.focusController.onExePositionOver)
+        self.exam.initFocusingSignal.connect(self.focusController.initFocusing)
+        self.exam.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
+        self.exam.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
+        self.exam.restartFocusingSignal.connect(self.focusController.restartFocusing)
+        self.exam.resDeviceConnected.connect(self.focusController.onResDeviceConnected)
+        self.exam.resMoveStage.connect(self.focusController.onResMoveStage)
+        self.exam.resStopStage.connect(self.focusController.onResStopStage)
+        self.exam.resGetSpectrum.connect(self.focusController.onResGetSpectrum)
+        self.exam.exePositionOver.connect(self.focusController.onExePositionOver)
 
     def initUI(self):
         central_widget = QWidget()
@@ -441,7 +418,7 @@ class Window(QMainWindow):
         btnSetting = QPushButton("테스트 설정")
         btnSetting.clicked.connect(self.openSetting)
         layout.addWidget(btnSetting)
-        self.test.setMeasureSignal.connect(self.setMeasure)
+        self.exam.setMeasureSignal.connect(self.setMeasure)
 
         ''' 포커싱 '''
         btnInit = QPushButton("initFocusing")
@@ -449,16 +426,16 @@ class Window(QMainWindow):
         btn2 = QPushButton("Pause")
         btn3 = QPushButton("ReStart")
 
-        btnInit.clicked.connect(self.test.initFocusing)
-        btn1.clicked.connect(self.test.resumeFocusing)
-        btn2.clicked.connect(self.test.pauseFocusing)
-        btn3.clicked.connect(self.test.restartFocusing)
+        btnInit.clicked.connect(self.exam.initFocusing)
+        btn1.clicked.connect(self.exam.resumeFocusing)
+        btn2.clicked.connect(self.exam.pauseFocusing)
+        btn3.clicked.connect(self.exam.restartFocusing)
 
         widStatus = StatusWindow()
         widLog = LogWindow()
-        self.test.statusMessage.connect(widStatus.append_log)
-        self.test.logMessage.connect(widLog.append_log)
-        self.test.initConnect()
+        self.exam.statusMessage.connect(widStatus.append_log)
+        self.exam.logMessage.connect(widLog.append_log)
+        self.exam.initConnect()
 
         layout.addWidget(btnInit)
         layout.addWidget(btn1)
@@ -469,18 +446,18 @@ class Window(QMainWindow):
         self.setCentralWidget(central_widget)
 
     def closeEvent(self, event):
-        self.test.close()
+        self.exam.close()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
             key = event.key()
             print(f"key: {key}, {type(key)}")
             if key == 51:
-                self.test.resumeFocusing()
+                self.exam.resumeFocusing()
             elif key == 50:
-                self.test.pauseFocusing()
+                self.exam.pauseFocusing()
             elif key == 49:
-                self.test.restartFocusing()
+                self.exam.restartFocusing()
 
         return super().eventFilter(obj, event)
 
