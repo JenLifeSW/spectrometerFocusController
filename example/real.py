@@ -7,8 +7,7 @@ from deviceAPIs import Laser, Spectrometer, Stage
 from example.setting import Setting
 
 from focusController import FocusController
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, \
-    QSpinBox, QLabel, QDoubleSpinBox, QDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
 from PySide6.QtCore import QObject, Signal, Slot, QEvent
 from PySide6.QtGui import QTextCursor
 
@@ -120,9 +119,6 @@ class FocusControllerExam(QObject):
 
     @Slot(str, bool)
     def log_print(self, message, log=True):
-        if message == "데이터 비정상":
-            self.errCnt += 1
-
         self.statusMessage.emit(message)
         if log:
             self.logMessage.emit(message)
@@ -273,6 +269,13 @@ class FocusControllerTest(FocusControllerExam):
     def initConnect(self):
         super().initConnect()
 
+    @Slot(str, bool)
+    def log_print(self, message, log=True):
+        if message == "데이터 비정상":
+            self.errCnt += 1
+
+        super().log_print(message, log)
+
     def initFocusing(self):
         self.stage.home()
         self.repeatCnt = 1
@@ -349,7 +352,6 @@ class StatusWindow(QTextEdit):
 
     def append_log(self, message):
         line = self.document().blockCount()
-        # print(line)
         if line > 500:
             OP = QTextCursor.MoveOperation
             cursor = self.textCursor()
@@ -377,14 +379,14 @@ class LogWindow(QTextEdit):
 class Window(QMainWindow):
     focusController = FocusController(testing=True)
     focusController.setStartPosition(stageSettings["top"])
-    exam = FocusControllerTest()
-    # exam = FocusControllerExam()
+    # exam = FocusControllerTest()        # 테스트용
+    exam = FocusControllerExam()        # 실제 사용
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.setting = Setting(self)
-        self.setting.initStep(self.exam.step)
+        # self.setting.initStep(self.exam.step)
         self.initDevice()
         self.initUI()
 
@@ -418,7 +420,7 @@ class Window(QMainWindow):
         btnSetting = QPushButton("테스트 설정")
         btnSetting.clicked.connect(self.openSetting)
         layout.addWidget(btnSetting)
-        self.exam.setMeasureSignal.connect(self.setMeasure)
+        # self.exam.setMeasureSignal.connect(self.setMeasure)
 
         ''' 포커싱 '''
         btnInit = QPushButton("initFocusing")
