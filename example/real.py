@@ -107,7 +107,7 @@ class FocusControllerExam(QObject):
         else:
             self.log_print(f"{TIME()} {TAG} 스테이지 초기화 실패")
         if self.specConnected:
-            self.spec.setIntegrationTime(100000)
+            self.spec.setIntegrationTime(5000000)
         else:
             self.log_print(f"{TIME()} {TAG} 스펙트로 미터 초기화 실패")
 
