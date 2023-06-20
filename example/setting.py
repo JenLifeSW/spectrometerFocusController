@@ -107,5 +107,5 @@ class InputStep(QHBoxLayout):
         return self.sboxRepeatTime.value()
 
     def setEstimatedTime(self):
-        estimate = self.getIntergrationTime() * self.getMeasureTime() * self.getRepeatTime() / 1000000 * 100 / 60
+        estimate = self.getIntergrationTime() * self.getMeasureTime() * self.getRepeatTime() / 1000000 * 50 / 60
         self.lbEstimatedTime.setText(f"예상 작업시간: {round(estimate, 2)}분")
