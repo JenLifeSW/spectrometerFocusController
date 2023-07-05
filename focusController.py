@@ -220,7 +220,7 @@ class FocusController(QObject):
     def onResGetSpectrum(self, intensities):
         METHOD = "9 ResGetSpectrum "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
-        self.measuredSignal.emit(self.measureCnt + 1, self.targetPointCnt[self.round], self.round)
+        self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
 
         if self.isPaused or not self.isRunning:
             return
