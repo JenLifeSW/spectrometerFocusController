@@ -24,7 +24,7 @@ class StepRange:
     def getStepRange(self, num):
         return self.step[num:], self.targetPointCnt[num:]
 
-
+# 시그널 만들기 (pointCnt, 현재 라운드 목표 카운트, 현재라운드)
 class FocusController(QObject):
     testing = False
     isCompleted = False
@@ -34,6 +34,7 @@ class FocusController(QObject):
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
+    measuredSignal = Signal(int, int, int)      # (현재 라운드 측정 횟수, 현재 라운드 목표 측정 횟수, 현재 라운드)
     focusCompleteSignal = Signal(list, int)
     focusDisabledErr = Signal(str)
 
@@ -79,6 +80,9 @@ class FocusController(QObject):
 
     def setMeasure(self, mesure):
         self.measure = mesure
+
+    def getRoundSteps(self):    # 라운드별 측정횟수
+        return self.targetPointCnt
 
     def initFocusing(self, restart=False):
         print(f"{TAG}2 initFocusing")
@@ -216,6 +220,8 @@ class FocusController(QObject):
     def onResGetSpectrum(self, intensities):
         METHOD = "9 ResGetSpectrum "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
+        self.measuredSignal.emit(self.measureCnt + 1, self.targetPointCnt[self.round], self.round)
+
         if self.isPaused or not self.isRunning:
             return
 
