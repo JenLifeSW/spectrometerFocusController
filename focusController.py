@@ -11,10 +11,45 @@ def use_um(value):
     return value/1000000
 
 
-class Command:
-    RESUEME = 1
-    PAUSE = 2
-    RESTART = 3
+# class Command:
+#     RESUEME = 1
+#     PAUSE = 2
+#     RESTART = 3
+
+
+class Status:
+    DISABLED = -1   # 기기 사용 불가
+    DEFAULT = 0     # 기본 상태
+    IDLE = 1        # 전원 on 상태
+    DETECTING = 2   # 검체 감지
+    FOCUSING = 3    # 포커싱 진행
+    PAUSING = 4     # 정지
+    RESTARTING = 5  # 재시작 중
+
+    @classmethod
+    def get_name(cls, code):
+        status_dict = {
+            cls.DISABLED: "DISABLED",
+            cls.DEFAULT: "DEFAULT",
+            cls.IDLE: "IDLE",
+            cls.DETECTING: "DETECTING",
+            cls.FOCUSING: "FOCUSING",
+            cls.PAUSING: "PAUSING",
+            cls.RESTARTING: "RESTARTING"
+        }
+        return status_dict.get(code, "UNKNOWN")
+
+
+SPECTIMEN_VALUE = 1200
+ESTIMATE_SPECTIMEN_TIME = 500
+
+# ---------->
+#
+# 1. initFocusing(할 때 매개변수 없애기)
+# 2. onResDeviceConnected 알고리즘 수정 필요해 보임(어떤 상타일 때 어떤 행동을 하는지?)
+# 3. 현재는
+# 3. isPaused, isRunning 없앨 수 있나?
+# ----------<
 
 
 class StepRange:
@@ -31,6 +66,7 @@ class FocusController(QObject):
 
     normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
+    spectimenDetectedSignal = Signal(bool)
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
@@ -50,7 +86,8 @@ class FocusController(QObject):
 
     conReqCnt = 0
     errCnt = 0
-    lastCommand = 0
+    # lastCommand = 0
+    status = Status.DEFAULT
 
     isRunning = False
     isPaused = False
@@ -72,7 +109,6 @@ class FocusController(QObject):
         print(f"{TAG}1 init")
         self.startPosition = startPosition
         self.testing = testing
-
         # self.initFocusing()
 
     def setStartPosition(self, startPosition):
@@ -90,7 +126,8 @@ class FocusController(QObject):
         if restart:
             self.isRunning = True
         else:
-            self.lastCommand = 0
+            # self.lastCommand = 0
+            self.status = Status.IDLE
             self.isRunning = False
 
         self.isPaused = False
@@ -113,18 +150,30 @@ class FocusController(QObject):
         self.measureCnt = 1
         self.tempSumOfIntensities = 0.0
 
+    def estimateSpectimenInserted(self, intensities):
+        if self.status != Status.DETECTING:
+            self.spectimenDetectTimer.stop()
+
+        if intensities < SPECTIMEN_VALUE:
+            self.spectimenDetectedSignal.emit(False)
+        else:
+            self.spectimenDetectedSignal.emit(True)
+
+        QTimer.singleShot(ESTIMATE_SPECTIMEN_TIME, self.reqGetSpectrum.emit)
+
 
     @Slot()
     def resumeFocusing(self):
         print(f"{TAG}4 resumeFocusing")
-        command = Command.RESUEME
-        if self.lastCommand == command:
+        command = Status.FOCUSING #Command.RESUEME
+        if self.status == command: # self.lastCommand == command:
             if self.isRunning:
                 print(f"{TAG}4 resumeFocusing, alreadyRunning")
                 self.alreadyRunningSignal.emit()
                 return
 
-        self.lastCommand = command
+        # self.lastCommand = command
+        self.status = command
         self.conReqCnt = 0
 
         if self.isRunning:
@@ -145,12 +194,13 @@ class FocusController(QObject):
     @Slot()
     def pauseFocusing(self):
         print(f"{TAG}5 pauseFocusing")
-        command = Command.PAUSE
-        if self.lastCommand == command:
+        command = Status.PAUSING # Command.PAUSE
+        if self.status == command: # self.lastCommand == command:
             self.alreadyStoppedSignal.emit()
             return
 
-        self.lastCommand = command
+        # self.lastCommand = command
+        self.status = command
         if self.isPaused:
             self.alreadyStoppedSignal.emit()
             return
@@ -161,7 +211,8 @@ class FocusController(QObject):
     @Slot()
     def restartFocusing(self):
         print(f"{TAG}6 restartFocusing")
-        self.lastCommand = Command.RESTART
+        # self.lastCommand = Command.RESTART
+        self.status = Status.RESTARTING
         if self.isPaused:
             self.isPaused = False
             self.conReqCnt = 0
@@ -195,6 +246,7 @@ class FocusController(QObject):
                 self.reqConnectDevice.emit()
             return
 
+        self.status = Status.IDLE
         print(f"{TAG}{METHOD}isPaused: {self.isPaused}")
         if self.isPaused:
             self.isPaused = False
@@ -210,14 +262,19 @@ class FocusController(QObject):
         METHOD = "9 onResMoveStage "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
         if self.isPaused or not self.isRunning:
-            return
-        print(f"{TAG}{METHOD}position: {position}")
+            self.status = Status.DETECTING
+
+        print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
 
         self.reqGetSpectrum.emit()
 
     @Slot(float)
     def onResGetSpectrum(self, intensities):
+        if self.status == Status.DETECTING:
+            self.estimateSpectimenInserted(intensities)
+            return
+
         METHOD = "9 ResGetSpectrum "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
         self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)

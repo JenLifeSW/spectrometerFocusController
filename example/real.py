@@ -123,6 +123,10 @@ class FocusControllerExam(QObject):
         if log:
             self.logMessage.emit(message)
 
+    @Slot(bool)
+    def onSpectimenDetectedSignal(self, isDetected):
+        self.log_print(f"검체감지: {isDetected}")
+
     @Slot(str)
     def onNormalLogSignal(self, msg):
         self.log_print(msg)
@@ -377,7 +381,7 @@ class LogWindow(QTextEdit):
 
 
 class Window(QMainWindow):
-    focusController = FocusController(testing=True)
+    focusController = FocusController()
     focusController.setStartPosition(stageSettings["top"])
     # exam = FocusControllerTest()        # 테스트용
     exam = FocusControllerExam()        # 실제 사용
@@ -393,6 +397,7 @@ class Window(QMainWindow):
     def initDevice(self):
 
         self.focusController.normalLogSignal.connect(self.exam.log_print)
+        self.focusController.spectimenDetectedSignal.connect(self.exam.onSpectimenDetectedSignal)
         self.focusController.alreadyRunningSignal.connect(self.exam.onAlreadyRunningSignal)
         self.focusController.alreadyStoppedSignal.connect(self.exam.onAlreadyStoppedSignal)
         self.focusController.focusCompleteSignal.connect(self.exam.onFocusCompleteSignal)
