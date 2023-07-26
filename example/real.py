@@ -3,10 +3,10 @@ from datetime import datetime
 
 import numpy as np
 
-from deviceAPIs import Laser, Spectrometer, Stage
-from example.setting import Setting
+from spectrometerFocusController.deviceAPIs import Laser, Spectrometer, Stage
+from spectrometerFocusController.example.setting import Setting
+from spectrometerFocusController.focusController import FocusController
 
-from focusController import FocusController
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
 from PySide6.QtCore import QObject, Signal, Slot, QEvent
 from PySide6.QtGui import QTextCursor
@@ -122,10 +122,6 @@ class FocusControllerExam(QObject):
         self.statusMessage.emit(message)
         if log:
             self.logMessage.emit(message)
-
-    @Slot(bool)
-    def onSpectimenDetectedSignal(self, isDetected):
-        self.log_print(f"검체감지: {isDetected}")
 
     @Slot(str)
     def onNormalLogSignal(self, msg):
@@ -381,7 +377,7 @@ class LogWindow(QTextEdit):
 
 
 class Window(QMainWindow):
-    focusController = FocusController()
+    focusController = FocusController(testing=True)
     focusController.setStartPosition(stageSettings["top"])
     # exam = FocusControllerTest()        # 테스트용
     exam = FocusControllerExam()        # 실제 사용
@@ -397,7 +393,6 @@ class Window(QMainWindow):
     def initDevice(self):
 
         self.focusController.normalLogSignal.connect(self.exam.log_print)
-        self.focusController.spectimenDetectedSignal.connect(self.exam.onSpectimenDetectedSignal)
         self.focusController.alreadyRunningSignal.connect(self.exam.onAlreadyRunningSignal)
         self.focusController.alreadyStoppedSignal.connect(self.exam.onAlreadyStoppedSignal)
         self.focusController.focusCompleteSignal.connect(self.exam.onFocusCompleteSignal)
