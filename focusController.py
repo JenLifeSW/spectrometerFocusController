@@ -1,3 +1,4 @@
+import numpy as np
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
 
 TAG = "     포커스 모듈 : "
@@ -11,10 +12,66 @@ def use_um(value):
     return value/1000000
 
 
-class Command:
-    RESUEME = 1
-    PAUSE = 2
-    RESTART = 3
+# class Command:
+#     RESUEME = 1
+#     PAUSE = 2
+#     RESTART = 3
+
+
+class Status:
+    DISABLED = -1   # 기기 사용 불가
+    DEFAULT = 0     # 기본 상태
+    IDLE = 1        # 전원 on 상태
+    DETECTING = 2   # 검체 감지
+    FOCUSING = 3    # 포커싱 진행
+    PAUSING = 4     # 정지
+    RESTARTING = 5  # 재시작 중
+    COLLECTING = 6  # Intensities 수집 중
+    COLLECTING_REQSPEC = 7  # Intensities 요청
+    COLLECTING_MOVING = 8   # 스테이지 이동 중
+    COLLECTING_PROCESSING = 9   # 데이터 처리 중
+
+    @classmethod
+    def get_name(cls, code):
+        status_dict = {
+            cls.DISABLED: "DISABLED",
+            cls.DEFAULT: "DEFAULT",
+            cls.IDLE: "IDLE",
+            cls.DETECTING: "DETECTING",
+            cls.FOCUSING: "FOCUSING",
+            cls.PAUSING: "PAUSING",
+            cls.RESTARTING: "RESTARTING",
+            cls.COLLECTING: "COLLECTING",
+            cls.COLLECTING_REQSPEC: "COLLECTING_REQSPEC",
+            cls.COLLECTING_MOVING: "COLLECTING_MOVING",
+            cls.COLLECTING_PROCESSING: "COLLECTING_PROCESSING",
+        }
+        return status_dict.get(code, "UNKNOWN")
+
+
+class IntegrationTime:
+    NORMAL = 5000000
+    DETECTING = 500000
+
+
+class StageHeight:
+    KIT = use_mm(14.73)
+    VOID = use_mm(7.23)
+
+
+COLLECTING_TIME = 30
+COLLECTING_INTEGRATIONS = [100000, 500000, 1000000, 2000000, 5000000]
+
+SPECTIMEN_VALUE = 1200
+ESTIMATE_SPECTIMEN_TIME = 500
+
+# ---------->
+#
+# 1. initFocusing(할 때 매개변수 없애기)
+# 2. onResDeviceConnected 알고리즘 수정 필요해 보임(어떤 상타일 때 어떤 행동을 하는지?)
+# 3. 현재는
+# 3. isPaused, isRunning 없앨 수 있나?
+# ----------<
 
 
 class StepRange:
@@ -31,6 +88,8 @@ class FocusController(QObject):
 
     normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
+    collectingCompleteSignal = Signal(dict)
+    spectimenDetectedSignal = Signal(bool)
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
@@ -40,6 +99,7 @@ class FocusController(QObject):
 
     reqDeviceConnected = Signal()
     reqConnectDevice = Signal()
+    reqSetIntegrationTime = Signal(int)
     reqStopStage = Signal()
     reqMoveStage = Signal(float)
     reqGetSpectrum = Signal()
@@ -50,7 +110,8 @@ class FocusController(QObject):
 
     conReqCnt = 0
     errCnt = 0
-    lastCommand = 0
+    # lastCommand = 0
+    status = Status.DEFAULT
 
     isRunning = False
     isPaused = False
@@ -60,6 +121,12 @@ class FocusController(QObject):
     arrivePosition = 0.0    # 스테이지 이동 요청 후 응답 받은 도착 위치
     pointCnt = 0            # 해당 라운드에서 스테이지를 이동한 횟수
     roundData = []          # 해당 라운드에서 이동하면서 수집한 데이터 [("position": "intensity")]
+
+    ''' collecting 변수 '''
+    collectingTimeCount = 0
+    collectingIntegrationIdx = 0
+    collectingDatas = {}
+    collectingTemp = []
 
     ''' 스펙트럼 오차 보완용 재측정 '''
     measure = 1         # 목표 재측정 횟수
@@ -72,7 +139,6 @@ class FocusController(QObject):
         print(f"{TAG}1 init")
         self.startPosition = startPosition
         self.testing = testing
-
         # self.initFocusing()
 
     def setStartPosition(self, startPosition):
@@ -90,7 +156,8 @@ class FocusController(QObject):
         if restart:
             self.isRunning = True
         else:
-            self.lastCommand = 0
+            # self.lastCommand = 0
+            self.status = Status.IDLE
             self.isRunning = False
 
         self.isPaused = False
@@ -113,18 +180,27 @@ class FocusController(QObject):
         self.measureCnt = 1
         self.tempSumOfIntensities = 0.0
 
+    def estimateSpectimenInserted(self, intensities):
+        if intensities < SPECTIMEN_VALUE:
+            self.spectimenDetectedSignal.emit(False)
+        else:
+            self.spectimenDetectedSignal.emit(True)
+
+        QTimer.singleShot(ESTIMATE_SPECTIMEN_TIME, self.reqGetSpectrum.emit)
+
 
     @Slot()
     def resumeFocusing(self):
         print(f"{TAG}4 resumeFocusing")
-        command = Command.RESUEME
-        if self.lastCommand == command:
+        command = Status.FOCUSING #Command.RESUEME
+        if self.status == command: # self.lastCommand == command:
             if self.isRunning:
                 print(f"{TAG}4 resumeFocusing, alreadyRunning")
                 self.alreadyRunningSignal.emit()
                 return
 
-        self.lastCommand = command
+        # self.lastCommand = command
+        self.status = command
         self.conReqCnt = 0
 
         if self.isRunning:
@@ -145,23 +221,28 @@ class FocusController(QObject):
     @Slot()
     def pauseFocusing(self):
         print(f"{TAG}5 pauseFocusing")
-        command = Command.PAUSE
-        if self.lastCommand == command:
+        command = Status.PAUSING # Command.PAUSE
+        if self.status == command: # self.lastCommand == command:
             self.alreadyStoppedSignal.emit()
             return
 
-        self.lastCommand = command
+        # self.lastCommand = command
+        self.status = command
         if self.isPaused:
             self.alreadyStoppedSignal.emit()
             return
 
         self.isPaused = True
+        self.reqSetIntegrationTime.emit(IntegrationTime.DETECTING)
+        self.status = Status.DETECTING
+        self.reqGetSpectrum.emit()
         # self.reqStopStage.emit()
 
     @Slot()
     def restartFocusing(self):
         print(f"{TAG}6 restartFocusing")
-        self.lastCommand = Command.RESTART
+        # self.lastCommand = Command.RESTART
+        self.status = Status.RESTARTING
         if self.isPaused:
             self.isPaused = False
             self.conReqCnt = 0
@@ -171,6 +252,42 @@ class FocusController(QObject):
         self.isPaused = True
         self.initFocusing(True)
 
+    # ---------- Collecting ---------- #
+    @Slot()
+    def moveToKitHeight(self):
+        # if self.status == Status.COLLECTING_MOVING:
+        #     return
+
+        self.status = Status.COLLECTING_MOVING
+        self.reqMoveStage.emit(StageHeight.KIT)
+
+    @Slot()
+    def moveToVoidHeight(self):
+        # if self.status == Status.COLLECTING_MOVING:
+        #     return
+
+        self.status = Status.COLLECTING_MOVING
+        self.reqMoveStage.emit(StageHeight.VOID)
+
+    @Slot()
+    def collectIntensities(self):
+        print(TAG, "collectingIntensities")
+        self.collectingTimeCount = 0
+        self.collectingIntegrationIdx = 0
+        self.status = Status.COLLECTING_PROCESSING
+        self.reqSetIntegrationTime.emit(COLLECTING_INTEGRATIONS[self.collectingIntegrationIdx])
+
+    @Slot()
+    def onResSetIntegrationTime(self):
+        print(TAG, "onResSetIntegrationTime")
+        if self.status != Status.COLLECTING_PROCESSING:
+            return
+
+        self.status = Status.COLLECTING_REQSPEC
+        # self.collectingDatas.append([])
+        self.reqGetSpectrum.emit()
+
+    # ---------- ---------- #
     def exceptionHandling(self):
         METHOD = "7 exceptionHandling "
         self.normalLogSignal.emit("데이터 비정상")
@@ -195,6 +312,7 @@ class FocusController(QObject):
                 self.reqConnectDevice.emit()
             return
 
+        self.status = Status.IDLE
         print(f"{TAG}{METHOD}isPaused: {self.isPaused}")
         if self.isPaused:
             self.isPaused = False
@@ -209,23 +327,68 @@ class FocusController(QObject):
     def onResMoveStage(self, position):
         METHOD = "9 onResMoveStage "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
-        if self.isPaused or not self.isRunning:
+        if self.status == Status.COLLECTING_MOVING:
+            self.status = Status.COLLECTING
             return
-        print(f"{TAG}{METHOD}position: {position}")
+
+        if self.isPaused or not self.isRunning:
+            self.reqSetIntegrationTime.emit(IntegrationTime.DETECTING)
+            self.status = Status.DETECTING
+        else:   # 여기다 하면 반복 호출됨 수정 필요@@@@@@@@@@@@@@@@@@@@@@@@@@
+            if self.status != Status.DETECTING:
+                self.reqSetIntegrationTime.emit(IntegrationTime.NORMAL)
+
+        print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
 
         self.reqGetSpectrum.emit()
 
-    @Slot(float)
+    @Slot(np.ndarray)
     def onResGetSpectrum(self, intensities):
-        METHOD = "9 ResGetSpectrum "
-        print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
+        METHOD = "9 ResGetSpectrum, "
+
+        if self.status == Status.COLLECTING_REQSPEC:
+            self.status = Status.COLLECTING_PROCESSING
+            leftIntensities = np.mean(intensities[1][:36])
+            self.collectingTemp.append(leftIntensities)
+            self.collectingTimeCount += 1
+
+            progress = f"[{self.collectingTimeCount}/{COLLECTING_TIME}] of [{self.collectingIntegrationIdx+1}/{len(COLLECTING_INTEGRATIONS)}]"
+            print(f"\r{TAG}{METHOD} ({progress}) mean: {leftIntensities}", end="")
+
+            if self.collectingTimeCount < COLLECTING_TIME:
+                self.status = Status.COLLECTING_REQSPEC
+                self.reqGetSpectrum.emit()
+                return
+            print("")
+
+            self.collectingTimeCount = 0
+            dictKey = f"{use_um(COLLECTING_INTEGRATIONS[self.collectingIntegrationIdx])}초"
+            self.collectingDatas[dictKey] = self.collectingTemp
+            self.collectingTemp = []
+            self.collectingIntegrationIdx += 1
+
+            if self.collectingIntegrationIdx < len(COLLECTING_INTEGRATIONS):
+                self.reqSetIntegrationTime.emit(COLLECTING_INTEGRATIONS[self.collectingIntegrationIdx])
+                return
+
+            self.collectingCompleteSignal.emit(self.collectingDatas)
+            self.status = Status.COLLECTING
+            return
+
+        print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
+        if self.status == Status.DETECTING:
+            leftIntensities = np.mean(intensities[1][:36])
+            self.estimateSpectimenInserted(leftIntensities)
+            return
+
+        rightIntensities = np.mean(intensities[1][36:])
         self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
 
         if self.isPaused or not self.isRunning:
             return
 
-        self.tempSumOfIntensities += intensities
+        self.tempSumOfIntensities += rightIntensities
 
         if self.measureCnt < self.measure:
             QTimer.singleShot(self.measureInterval, self.reqGetSpectrum.emit)
