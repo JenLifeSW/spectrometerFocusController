@@ -10,6 +10,7 @@ class Spectrometer(QThread):
     limitBottom = None
 
     connectedSignal = Signal(bool)
+    integrationTimeSettedSignal = Signal()
     infoSignal = Signal(list)
     ramanSignal = Signal(list)
 
@@ -33,6 +34,8 @@ class Spectrometer(QThread):
 
     def setIntegrationTime(self, value):
         self.spec.integration_time_micros(value)
+        # self.getSpectrum()
+        self.integrationTimeSettedSignal.emit()
 
     def getSpectrum(self):
         return self.spec.spectrum()
