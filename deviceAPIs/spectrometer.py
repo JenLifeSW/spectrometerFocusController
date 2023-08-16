@@ -1,3 +1,4 @@
+import numpy as np
 import seatease.spectrometers as st
 import seabreeze.spectrometers as sb
 from PySide6.QtCore import QThread, QTimer, Signal, Slot
@@ -11,7 +12,7 @@ class Spectrometer(QThread):
 
     connectedSignal = Signal(bool)
     integrationTimeSettedSignal = Signal()
-    resGetSpectrum = Signal(list)
+    resGetSpectrum = Signal(np.ndarray)
     ramanSignal = Signal(list)
 
     def __init__(self, isVirtual=False, signalInterval=1000):
