@@ -113,6 +113,7 @@ class FocusControllerExam(QObject):
         self.stage.stoppedSignal.connect(self.onResStopStage)
         self.stage.errCannotDetect.connect(self.onErrorSignal)
         self.stage.errPositionLimit.connect(self.onErrorSignal)
+        self.spec.resGetSpectrum.connect(self.onResGetSpectrum)
         self.spec.integrationTimeSettedSignal.connect(self.onResSetIntegrationTime)
 
         # 기기 -> 테스트 모듈 응답
@@ -293,9 +294,14 @@ class FocusControllerExam(QObject):
             return
 
     def onReqGetSpectrum(self):
-        intensities = self.spec.getSpectrum()
+        self.spec.getSpectrum()
+        # intensities = self.spec.getSpectrum()
         # average = np.mean(intensities[1])
-        self.resGetSpectrum.emit(intensities)
+        # self.resGetSpectrum.emit(intensities)
+
+    @Slot(np.ndarray)
+    def onResGetSpectrum(self, spectrumInfo):
+        self.resGetSpectrum.emit(spectrumInfo)
 
     def onResSetIntegrationTime(self):
         self.resSetIntegrationTime.emit()

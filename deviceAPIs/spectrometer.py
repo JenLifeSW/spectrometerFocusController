@@ -11,7 +11,7 @@ class Spectrometer(QThread):
 
     connectedSignal = Signal(bool)
     integrationTimeSettedSignal = Signal()
-    infoSignal = Signal(list)
+    resGetSpectrum = Signal(list)
     ramanSignal = Signal(list)
 
     def __init__(self, isVirtual=False, signalInterval=1000):
@@ -20,7 +20,7 @@ class Spectrometer(QThread):
             self.spec = st.Spectrometer.from_first_available() if isVirtual else sb.Spectrometer.from_first_available()
             self.setIntegrationTime(100000)
             self.timer = QTimer()
-            self.timer.timeout.connect(self.emitInfoSignal)
+            self.timer.timeout.connect(self.getSpectrumAsync)
             self.timer.start(signalInterval)
             self.isConnected = True
             self.connectedSignal.emit(True)
@@ -29,25 +29,35 @@ class Spectrometer(QThread):
             print("스펙트로미터 장치에 연결할 수 없습니다.", e)
             self.connectedSignal.emit(False)
 
+    def run(self):
+        self.getSpectrumAsync()
+
     def close(self):
         self.spec.close()
 
     def setIntegrationTime(self, value):
         self.spec.integration_time_micros(value)
-        # self.getSpectrum()
         self.integrationTimeSettedSignal.emit()
+        self.timer.stop()
+        self.timer.setInterval(value / 100)
+        self.timer.start()
 
+    @Slot()
     def getSpectrum(self):
-        return self.spec.spectrum()
+        self.getSpectrumAsync()
+
+    def getSpectrumAsync(self):
+        info = self.getSpectrum()
+        self.resGetSpectrum.emit(info)
 
     @Slot()
     def checkConnected(self):
         self.connectedSignal.emit(self.isConnected)
 
-    @Slot()
-    def emitInfoSignal(self):
-        info = self.getSpectrum()
-        self.infoSignal.emit(info)
+    # @Slot()
+    # def emitInfoSignal(self):
+    #     info = self.getSpectrum()
+    #     self.infoSignal.emit(info)
 
     @Slot(float)
     def getRamanShift(self, laserWavelength):
