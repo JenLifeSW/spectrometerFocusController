@@ -22,14 +22,16 @@ class Status:
     DISABLED = -1   # 기기 사용 불가
     DEFAULT = 0     # 기본 상태
     IDLE = 1        # 전원 on 상태
-    DETECTING = 2   # 검체 감지
-    FOCUSING = 3    # 포커싱 진행
-    PAUSING = 4     # 정지
-    RESTARTING = 5  # 재시작 중
-    COLLECTING = 6  # Intensities 수집 중
-    COLLECTING_REQSPEC = 7  # Intensities 요청
-    COLLECTING_MOVING = 8   # 스테이지 이동 중
-    COLLECTING_PROCESSING = 9   # 데이터 처리 중
+    INITIALING = 2  # 초기화 중
+    DETECTING = 3   # 검체 감지
+    FOCUSING = 4    # 포커싱 진행
+    FOCUS_COMPLETING = 5        # 포커스위치로 이동
+    PAUSING = 6     # 정지
+    RESTARTING = 7  # 재시작 중
+    COLLECTING = 8  # Intensities 수집 중
+    COLLECTING_REQSPEC = 9      # Intensities 요청
+    COLLECTING_MOVING = 10      # 스테이지 이동 중
+    COLLECTING_PROCESSING = 11  # 데이터 처리 중
 
     @classmethod
     def get_name(cls, code):
@@ -37,8 +39,10 @@ class Status:
             cls.DISABLED: "DISABLED",
             cls.DEFAULT: "DEFAULT",
             cls.IDLE: "IDLE",
+            cls.INITIALING: "INITIALING",
             cls.DETECTING: "DETECTING",
             cls.FOCUSING: "FOCUSING",
+            cls.FOCUS_COMPLETING: "FOCUS_COMPLETING",
             cls.PAUSING: "PAUSING",
             cls.RESTARTING: "RESTARTING",
             cls.COLLECTING: "COLLECTING",
@@ -88,13 +92,14 @@ class FocusController(QObject):
 
     normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
+    statusSignal = Signal(str)
     collectingCompleteSignal = Signal(dict)
     specimenDetectedSignal = Signal(bool)
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
     measuredSignal = Signal(int, int, int)      # (현재 라운드 측정 횟수, 현재 라운드 목표 측정 횟수, 현재 라운드)
-    focusCompleteSignal = Signal(list, int)
+    focusCompleteSignal = Signal(np.ndarray)
     focusDisabledErr = Signal(str)
 
     reqDeviceConnected = Signal()
@@ -134,12 +139,19 @@ class FocusController(QObject):
     measureInterval = 1    # 재측정 간격 (ms)
     tempSumOfIntensities = 0.0    # 스펙트럼 평균
 
+    statusTimer = QTimer()
+
     def __init__(self, startPosition=startPosition, testing=False):
         super().__init__()
         print(f"{TAG}1 init")
         self.startPosition = startPosition
         self.testing = testing
+        self.statusTimer.start(1000)
         # self.initFocusing()
+
+    @Slot()
+    def emitStatusSignal(self):
+        self.statusSignal.emit(Status.get_name(self.status))
 
     def setStartPosition(self, startPosition):
         self.startPosition = startPosition
@@ -157,7 +169,7 @@ class FocusController(QObject):
             self.isRunning = True
         else:
             # self.lastCommand = 0
-            self.status = Status.IDLE
+            self.status = Status.INITIALING
             self.isRunning = False
 
         self.isPaused = False
@@ -382,10 +394,19 @@ class FocusController(QObject):
             self.estimateSpecimenInserted(leftIntensities)
             return
 
+        if self.status == Status.FOCUS_COMPLETING:
+            print(f"{TAG}{METHOD}포커싱 완료")
+            self.isRunning = False
+            self.isCompleted = True
+            self.focusCompleteSignal.emit(intensities)
+            self.status = Status.IDLE
+            return
+
         rightIntensities = np.mean(intensities[1][36:])
         self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
 
         if self.isPaused or not self.isRunning:
+            self.status = Status.IDLE
             return
 
         self.tempSumOfIntensities += rightIntensities
@@ -446,10 +467,9 @@ class FocusController(QObject):
             return
 
         else:
-            print(f"{TAG}{METHOD}포커싱 완료")
-            self.isRunning = False
-            self.isCompleted = True
-            self.focusCompleteSignal.emit(self.roundData, maxIdx)
+            self.status = Status.FOCUS_COMPLETING
+            targetPosition = round(self.roundData[maxIdx][0] * 1000, 3)
+            self.reqMoveStage.emit(targetPosition)
 
     @Slot(float, float)
     def onExePositionOver(self, position, intensity):

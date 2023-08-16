@@ -259,11 +259,10 @@ class FocusControllerExam(QObject):
     def onAlreadyStoppedSignal(self):
         self.log_print(f"\n{TIME()} {TAG} alreadyStoppedSignal 발생\n")
 
-    @Slot(list, int)
-    def onFocusCompleteSignal(self, roundData, focusPosition):
-        focus = roundData[focusPosition]
+    @Slot(np.ndarray)
+    def onFocusCompleteSignal(self, intensities):
         self.log_print("="*80)
-        self.log_print(f"{TIME()} {TAG} 포커싱 완료, position: {round(focus[0] * 1000, 3)}, value: {round(focus[1], 3)}")
+        self.log_print(f"{TIME()} {TAG} 포커싱 완료.")
 
 
     # 기기 응답에 따라 포커싱알고리즘에 응답
