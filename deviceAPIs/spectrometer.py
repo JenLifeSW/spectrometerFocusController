@@ -20,7 +20,7 @@ class Spectrometer(QThread):
             self.spec = st.Spectrometer.from_first_available() if isVirtual else sb.Spectrometer.from_first_available()
             self.setIntegrationTime(100000)
             self.timer = QTimer()
-            self.timer.timeout.connect(self.getSpectrumAsync)
+            self.timer.timeout.connect(self.getSpectrum)
             self.timer.start(signalInterval)
             self.isConnected = True
             self.connectedSignal.emit(True)
@@ -44,7 +44,7 @@ class Spectrometer(QThread):
 
     @Slot()
     def getSpectrum(self):
-        self.getSpectrumAsync()
+        self.start()
 
     def getSpectrumAsync(self):
         info = self.getSpectrum()
