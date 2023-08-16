@@ -3,9 +3,12 @@ from datetime import datetime
 
 import numpy as np
 
-from spectrometerFocusController.deviceAPIs import Laser, Spectrometer, Stage
-from spectrometerFocusController.example.setting import Setting
-from spectrometerFocusController.focusController import FocusController
+# from spectrometerFocusController.deviceAPIs import Laser, Spectrometer, Stage
+# from spectrometerFocusController.example.setting import Setting
+# from spectrometerFocusController.focusController import FocusController
+from deviceAPIs import Laser, Spectrometer, Stage
+from example.setting import Setting
+from focusController import FocusController
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit
 from PySide6.QtCore import QObject, Signal, Slot, QEvent
@@ -44,6 +47,9 @@ class FocusControllerExam(QObject):
     spec = Spectrometer()
     stage = Stage(1)
 
+    focusController = FocusController(testing=True)
+    focusController.setStartPosition(stageSettings["top"])
+
     statusMessage = Signal(str)
     logMessage = Signal(str)
 
@@ -60,29 +66,60 @@ class FocusControllerExam(QObject):
     resMoveStage = Signal(float)
     resStopStage = Signal()
     resGetSpectrum = Signal(np.ndarray)
+    resSetIntegrationTime = Signal()
     exePositionOver = Signal(float, float)
 
     def __init__(self):
         super().__init__()
 
     def initConnect(self):
+        # 포커스 컨트롤러 -> 테스트 모듈 요청
+        self.focusController.reqSetIntegrationTime.connect(self.onReqSetIntegrationTime)
+        self.focusController.reqDeviceConnected.connect(self.onReqDeviceConnected)
+        self.focusController.reqConnectDevice.connect(self.onReqConnectDevice)
+        self.focusController.reqMoveStage.connect(self.onReqMoveStage)
+        self.focusController.reqStopStage.connect(self.onReqStopStage)
+        self.focusController.reqGetSpectrum.connect(self.onReqGetSpectrum)
 
-        self.stage.normalLogSignal.connect(self.onNormalLogSignal)
+        # 포커스 컨트롤러 -> 일반 시그널
+        self.focusController.normalLogSignal.connect(self.log_print)
+        self.focusController.alreadyRunningSignal.connect(self.onAlreadyRunningSignal)
+        self.focusController.alreadyStoppedSignal.connect(self.onAlreadyStoppedSignal)
+        self.focusController.collectingCompleteSignal.connect(self.onCollectingCompleteSignal)
+        self.focusController.focusCompleteSignal.connect(self.onFocusCompleteSignal)
+        self.focusController.focusDisabledErr.connect(self.onfocusDisabledErr)
 
-        # 테스트모듈 -> 기기 요청
+        # 테스트 모듈 -> 포커스 컨트롤러 응답
+        self.resDeviceConnected.connect(self.focusController.onResDeviceConnected)
+        self.resSetIntegrationTime.connect(self.focusController.onResSetIntegrationTime)
+        self.resMoveStage.connect(self.focusController.onResMoveStage)
+        self.resStopStage.connect(self.focusController.onResStopStage)
+        self.resGetSpectrum.connect(self.focusController.onResGetSpectrum)
+        self.exePositionOver.connect(self.focusController.onExePositionOver)
+
+        # 테스트 모듈 -> 포커스 컨트롤러 요청
+        self.initFocusingSignal.connect(self.focusController.initFocusing)
+        self.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
+        self.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
+        self.restartFocusingSignal.connect(self.focusController.restartFocusing)
+
+        # 테스트 모듈 -> 기기 요청
         self.reqMoveStage.connect(self.stage.move)
         self.reqStopStage.connect(self.stage.stopMove)
 
-        # 기기 -> 테스트모듈 일반시그널
+        # 기기 -> 일반 시그널
+        self.stage.normalLogSignal.connect(self.onNormalLogSignal)
         self.stage.stageMovedSignal.connect(self.onResMoveStage)
         self.stage.stoppedSignal.connect(self.onResStopStage)
         self.stage.errCannotDetect.connect(self.onErrorSignal)
         self.stage.errPositionLimit.connect(self.onErrorSignal)
+        self.spec.integrationTimeSettedSignal.connect(self.onResSetIntegrationTime)
 
-        # 기기 -> 테스트모듈 응답
+        # 기기 -> 테스트 모듈 응답
         self.laser.connectedSignal.connect(self.onLaserConnected)
         self.spec.connectedSignal.connect(self.onSpectrometerConnected)
         self.stage.connectedSignal.connect(self.onStageConnected)
+
         self.laser.checkConnected()
         self.spec.checkConnected()
         self.stage.checkConnected()
@@ -128,7 +165,7 @@ class FocusControllerExam(QObject):
         self.log_print(msg)
 
     @Slot(int)
-    def onSetIntegrationTime(self, value):
+    def onReqSetIntegrationTime(self, value):
         self.spec.setIntegrationTime(value)
 
     ''' 모듈 '''
@@ -185,6 +222,18 @@ class FocusControllerExam(QObject):
             w.writerows(rows)
 
         # print("완료\n", collectingDatas)
+
+    @Slot()
+    def collectIntensities(self):
+        self.focusController.collectIntensities()
+
+    @Slot()
+    def moveToKitHeight(self):
+        self.focusController.moveToKitHeight()
+
+    @Slot()
+    def moveToVoidHeight(self):
+        self.focusController.moveToVoidHeight()
 
     ''' 포커싱 '''
     # 베이직 시그널
@@ -247,6 +296,9 @@ class FocusControllerExam(QObject):
         intensities = self.spec.getSpectrum()
         # average = np.mean(intensities[1])
         self.resGetSpectrum.emit(intensities)
+
+    def onResSetIntegrationTime(self):
+        self.resSetIntegrationTime.emit()
 
     # 포커싱알고리즘 응답에 따라 기기에 응답
     @Slot(int, float)
@@ -400,8 +452,6 @@ class LogWindow(QTextEdit):
 
 
 class Window(QMainWindow):
-    focusController = FocusController(testing=True)
-    focusController.setStartPosition(stageSettings["top"])
     # exam = FocusControllerTest()        # 테스트용
     exam = FocusControllerExam()        # 실제 사용
 
@@ -410,34 +460,7 @@ class Window(QMainWindow):
 
         self.setting = Setting(self)
         # self.setting.initStep(self.exam.step)
-        self.initDevice()
         self.initUI()
-
-    def initDevice(self):
-
-        self.focusController.normalLogSignal.connect(self.exam.log_print)
-        self.focusController.reqSetIntegrationTime.connect(self.exam.onSetIntegrationTime)
-        self.focusController.alreadyRunningSignal.connect(self.exam.onAlreadyRunningSignal)
-        self.focusController.alreadyStoppedSignal.connect(self.exam.onAlreadyStoppedSignal)
-        self.focusController.collectingCompleteSignal.connect(self.exam.onCollectingCompleteSignal)
-        self.focusController.focusCompleteSignal.connect(self.exam.onFocusCompleteSignal)
-        self.focusController.reqDeviceConnected.connect(self.exam.onReqDeviceConnected)
-        self.focusController.reqConnectDevice.connect(self.exam.onReqConnectDevice)
-        self.focusController.reqMoveStage.connect(self.exam.onReqMoveStage)
-        self.focusController.reqStopStage.connect(self.exam.onReqStopStage)
-        self.focusController.reqGetSpectrum.connect(self.exam.onReqGetSpectrum)
-        self.focusController.focusDisabledErr.connect(self.exam.onfocusDisabledErr)
-
-        self.exam.initFocusingSignal.connect(self.focusController.initFocusing)
-        self.exam.resumeFocusingSignal.connect(self.focusController.resumeFocusing)
-        self.exam.pauseFocusingSignal.connect(self.focusController.pauseFocusing)
-        self.exam.restartFocusingSignal.connect(self.focusController.restartFocusing)
-        self.exam.resDeviceConnected.connect(self.focusController.onResDeviceConnected)
-        self.exam.spec.integrationTimeSettedSignal.connect(self.focusController.onResSetIntegrationTime)
-        self.exam.resMoveStage.connect(self.focusController.onResMoveStage)
-        self.exam.resStopStage.connect(self.focusController.onResStopStage)
-        self.exam.resGetSpectrum.connect(self.focusController.onResGetSpectrum)
-        self.exam.exePositionOver.connect(self.focusController.onExePositionOver)
 
     def initUI(self):
         central_widget = QWidget()
@@ -452,9 +475,9 @@ class Window(QMainWindow):
         btnCollect = QPushButton("데이터 측정 시작")
         btnMoveToKitHeight = QPushButton("키트 초점 위치로 이동")
         btnMoveToVoidHeight = QPushButton("Void 초점 위치로 이동")
-        btnCollect.clicked.connect(self.focusController.collectIntensities)
-        btnMoveToKitHeight.clicked.connect(self.focusController.moveToKitHeight)
-        btnMoveToVoidHeight.clicked.connect(self.focusController.moveToVoidHeight)
+        btnCollect.clicked.connect(self.exam.collectIntensities)
+        btnMoveToKitHeight.clicked.connect(self.exam.moveToKitHeight)
+        btnMoveToVoidHeight.clicked.connect(self.exam.moveToVoidHeight)
         layout.addWidget(btnCollect)
         layout.addWidget(btnMoveToKitHeight)
         layout.addWidget(btnMoveToVoidHeight)
@@ -503,9 +526,9 @@ class Window(QMainWindow):
     def openSetting(self):
         self.setting.show()
 
-    @Slot(int)
-    def setMeasure(self, measureTime):
-        self.focusController.setMeasure(measureTime)
+    # @Slot(int)
+    # def setMeasure(self, measureTime):
+    #     self.focusController.setMeasure(measureTime)
 
 
 if __name__ == "__main__":
