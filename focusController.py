@@ -62,8 +62,8 @@ class StageHeight:
 COLLECTING_TIME = 30
 COLLECTING_INTEGRATIONS = [100000, 500000, 1000000, 2000000, 5000000]
 
-SPECTIMEN_VALUE = 1200
-ESTIMATE_SPECTIMEN_TIME = 500
+SPECIMEN_VALUE = 1700
+ESTIMATE_SPECIMEN_TIME = 1000
 
 # ---------->
 #
@@ -89,7 +89,7 @@ class FocusController(QObject):
     normalLogSignal = Signal(str)
     initFocusingSignal = Signal()
     collectingCompleteSignal = Signal(dict)
-    spectimenDetectedSignal = Signal(bool)
+    specimenDetectedSignal = Signal(bool)
 
     alreadyRunningSignal = Signal()
     alreadyStoppedSignal = Signal()
@@ -180,13 +180,13 @@ class FocusController(QObject):
         self.measureCnt = 1
         self.tempSumOfIntensities = 0.0
 
-    def estimateSpectimenInserted(self, intensities):
-        if intensities < SPECTIMEN_VALUE:
-            self.spectimenDetectedSignal.emit(False)
+    def estimateSpecimenInserted(self, intensities):
+        if intensities < SPECIMEN_VALUE:
+            self.specimenDetectedSignal.emit(False)
         else:
-            self.spectimenDetectedSignal.emit(True)
+            self.specimenDetectedSignal.emit(True)
 
-        QTimer.singleShot(ESTIMATE_SPECTIMEN_TIME, self.reqGetSpectrum.emit)
+        QTimer.singleShot(ESTIMATE_SPECIMEN_TIME, self.reqGetSpectrum.emit)
 
 
     @Slot()
@@ -379,7 +379,7 @@ class FocusController(QObject):
         print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
         if self.status == Status.DETECTING:
             leftIntensities = np.mean(intensities[1][:36])
-            self.estimateSpectimenInserted(leftIntensities)
+            self.estimateSpecimenInserted(leftIntensities)
             return
 
         rightIntensities = np.mean(intensities[1][36:])
