@@ -91,6 +91,7 @@ class FocusController(QObject):
     isCompleted = False
 
     normalLogSignal = Signal(str)
+    initCompleteSignal = Signal()
     initFocusingSignal = Signal()
     statusSignal = Signal(str)
     collectingCompleteSignal = Signal(dict)
@@ -139,15 +140,15 @@ class FocusController(QObject):
     measureInterval = 1    # 재측정 간격 (ms)
     tempSumOfIntensities = 0.0    # 스펙트럼 평균
 
-    statusTimer = QTimer()
-
     def __init__(self, startPosition=startPosition, testing=False):
         super().__init__()
         print(f"{TAG}1 init")
         self.startPosition = startPosition
         self.testing = testing
-        self.statusTimer.start(1000)
+
+        self.statusTimer = QTimer()
         self.statusTimer.timeout.connect(self.emitStatusSignal)
+        self.statusTimer.start(1000)
         # self.initFocusing()
 
     @Slot()
@@ -340,6 +341,12 @@ class FocusController(QObject):
     def onResMoveStage(self, position):
         METHOD = "9 onResMoveStage "
         print(f"{TAG}{METHOD}isPaused: {self.isPaused} isRunning: {self.isRunning}")
+
+        if self.status == Status.INITIALING:
+            self.status = Status.IDLE
+            self.initCompleteSignal.emit()
+            return
+
         if self.status == Status.COLLECTING_MOVING:
             self.status = Status.COLLECTING
             return
@@ -389,7 +396,7 @@ class FocusController(QObject):
             self.status = Status.COLLECTING
             return
 
-        print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
+        # print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
         if self.status == Status.DETECTING:
             leftIntensities = np.mean(intensities[1][:36])
             self.estimateSpecimenInserted(leftIntensities)
