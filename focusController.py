@@ -147,6 +147,7 @@ class FocusController(QObject):
         self.startPosition = startPosition
         self.testing = testing
         self.statusTimer.start(1000)
+        self.statusTimer.timeout.connect(self.emitStatusSignal)
         # self.initFocusing()
 
     @Slot()
