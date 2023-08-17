@@ -397,7 +397,7 @@ class FocusController(QObject):
             return
 
         # print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
-        if self.status == Status.DETECTING:
+        if self.status == Status.DETECTING or self.status == Status.IDLE:
             leftIntensities = np.mean(intensities[1][:36])
             self.estimateSpecimenInserted(leftIntensities)
             return
@@ -410,12 +410,12 @@ class FocusController(QObject):
             self.status = Status.IDLE
             return
 
-        rightIntensities = np.mean(intensities[1][36:])
-        self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
-
         if self.isPaused or not self.isRunning:
             self.status = Status.IDLE
             return
+
+        rightIntensities = np.mean(intensities[1][36:])
+        self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
 
         self.tempSumOfIntensities += rightIntensities
 
