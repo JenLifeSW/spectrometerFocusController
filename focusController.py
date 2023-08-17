@@ -476,7 +476,7 @@ class FocusController(QObject):
 
         else:
             self.status = Status.FOCUS_COMPLETING
-            targetPosition = round(self.roundData[maxIdx][0] * 1000, 3)
+            targetPosition = round(self.roundData[maxIdx][0], 3)
             self.reqMoveStage.emit(targetPosition)
 
     @Slot(float, float)
