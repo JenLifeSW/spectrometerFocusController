@@ -41,7 +41,7 @@ class Spectrometer(QThread):
         self.spec.integration_time_micros(value)
         self.integrationTimeSettedSignal.emit()
         self.timer.stop()
-        self.timer.setInterval(value / 100)
+        self.timer.setInterval(value / 1000)
         self.timer.start()
 
     @Slot()
