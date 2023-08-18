@@ -353,7 +353,7 @@ class FocusController(QObject):
 
         print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
-        QTimer.singleShot(int(IntegrationTime.NORMAL * 0.7), self.setAdmitSpectrum)
+        QTimer.singleShot(int(IntegrationTime.NORMAL * 0.7 / 1000), self.setAdmitSpectrum)
 
     @Slot(np.ndarray)
     def onResGetSpectrum(self, intensities):
