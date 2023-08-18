@@ -340,6 +340,7 @@ class FocusController(QObject):
         if self.status == Status.INITIALING:
             self.status = Status.IDLE
             self.initCompleteSignal.emit()
+            self.reqSetIntegrationTime.emit(IntegrationTime.DETECTING)
             return
 
         if self.status == Status.COLLECTING_MOVING:
@@ -357,6 +358,8 @@ class FocusController(QObject):
     @Slot(np.ndarray)
     def onResGetSpectrum(self, intensities):
         METHOD = "9 ResGetSpectrum, "
+
+        print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
 
         if self.status == Status.COLLECTING_REQSPEC:
             self.status = Status.COLLECTING_PROCESSING
@@ -386,7 +389,6 @@ class FocusController(QObject):
             self.status = Status.COLLECTING
             return
 
-        # print(f"{TAG}{METHOD}status: {self.status}, isPaused: {self.isPaused}, isRunning: {self.isRunning}")
         if self.status == Status.DETECTING or self.status == Status.IDLE:
             leftIntensities = np.mean(intensities[1][:36])
             self.estimateSpecimenInserted(leftIntensities)
