@@ -24,6 +24,7 @@ class Spectrometer(QThread):
             self.timer.start(signalInterval)
             self.setIntegrationTime(100000)
             self.isConnected = True
+            self.isProcessing = False
             self.connectedSignal.emit(True)
 
         except Exception as e:
@@ -48,17 +49,17 @@ class Spectrometer(QThread):
         self.start()
 
     def getSpectrumAsync(self):
+        self.isProcessing = True
         info = self.spec.spectrum()
+        self.isProcessing = False
         self.resGetSpectrum.emit(info)
+
+    def stopGetSpectrum(self):
+        self.timer.stop()
 
     @Slot()
     def checkConnected(self):
         self.connectedSignal.emit(self.isConnected)
-
-    # @Slot()
-    # def emitInfoSignal(self):
-    #     info = self.getSpectrum()
-    #     self.infoSignal.emit(info)
 
     @Slot(float)
     def getRamanShift(self, laserWavelength):

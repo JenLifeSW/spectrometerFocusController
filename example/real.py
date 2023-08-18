@@ -38,7 +38,25 @@ stageSettings = {
 }
 
 
+class Status:
+    DEFAULT = 0
+    IDLE = 1
+    CLOSING = 2
+    CLOSED = 3
+
+    @classmethod
+    def get_status(cls, code):
+        status_dict = {
+            cls.DEFAULT: "DEFAULT",
+            cls.IDLE: "IDLE",
+            cls.CLOSING: "CLOSING",
+            cls.CLOSED: "CLOSED",
+        }
+        return status_dict.get(code, "UNKNOWN")
+
+
 class FocusControllerExam(QObject):
+    status = Status.DEFAULT
     laserConnected = False
     specConnected = False
     stageConnected = False
@@ -52,6 +70,7 @@ class FocusControllerExam(QObject):
 
     statusMessage = Signal(str)
     logMessage = Signal(str)
+    closeAbleSignal = Signal()
 
     ''' 모듈 통신 '''
     reqMoveStage = Signal(int, float)
@@ -148,12 +167,26 @@ class FocusControllerExam(QObject):
         else:
             self.log_print(f"{TIME()} {TAG} 스펙트로 미터 초기화 실패")
 
+        self.setStatus(Status.IDLE)
         self.initFocusing()
 
     def close(self):
-        self.laser.close()
-        self.spec.close()
-        self.stage.close()
+        if self.spec.isProcessing:
+            self.setStatus(Status.CLOSING)
+            self.spec.stopGetSpectrum()
+            return
+
+        if self.status != Status.CLOSED:
+            self.spec.close()
+            self.laser.close()
+            self.stage.close()
+            self.setStatus(Status.CLOSED)
+
+        self.closeAbleFlag = True
+        self.closeAbleSignal.emit()
+
+    def setStatus(self, status):
+        self.status = status
 
     @Slot(str, bool)
     def log_print(self, message, log=True):
@@ -300,7 +333,12 @@ class FocusControllerExam(QObject):
 
     @Slot(np.ndarray)
     def onResGetSpectrum(self, spectrumInfo):
-        self.resGetSpectrum.emit(spectrumInfo)
+        if self.status == Status.IDLE:
+            self.resGetSpectrum.emit(spectrumInfo)
+            return
+
+        if self.status == Status.CLOSING:
+            self.close()
 
     def onResSetIntegrationTime(self):
         self.resSetIntegrationTime.emit()
@@ -502,6 +540,7 @@ class Window(QMainWindow):
         widLog = LogWindow()
         self.exam.statusMessage.connect(widStatus.append_log)
         self.exam.logMessage.connect(widLog.append_log)
+        self.exam.closeAbleSignal.connect(self.close)
         self.exam.initConnect()
 
         layout.addWidget(btnInit)
@@ -513,7 +552,13 @@ class Window(QMainWindow):
         self.setCentralWidget(central_widget)
 
     def closeEvent(self, event):
-        self.exam.close()
+        if hasattr(self.exam, "closeAbleFlag") and self.exam.closeAbleFlag:
+            self.exam.close()
+            event.accept()
+        else:
+            self.setWindowTitle("종료중...")
+            self.exam.close()
+            event.ignore()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
