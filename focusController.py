@@ -108,7 +108,6 @@ class FocusController(QObject):
     reqSetIntegrationTime = Signal(int)
     reqStopStage = Signal()
     reqMoveStage = Signal(float)
-    reqGetSpectrum = Signal()
 
     # step = [-use_um(1562), -use_um(625), -use_um(250), -use_um(50), -use_um(10)]
     # targetPointCnt = [6, 6, 6, 11, 11]
@@ -200,9 +199,6 @@ class FocusController(QObject):
         else:
             self.specimenDetectedSignal.emit(True)
 
-        QTimer.singleShot(ESTIMATE_SPECIMEN_TIME, self.reqGetSpectrum.emit)
-
-
     @Slot()
     def resumeFocusing(self):
         print(f"{TAG}4 resumeFocusing")
@@ -249,7 +245,6 @@ class FocusController(QObject):
         self.isPaused = True
         self.reqSetIntegrationTime.emit(IntegrationTime.DETECTING)
         self.status = Status.DETECTING
-        self.reqGetSpectrum.emit()
         # self.reqStopStage.emit()
 
     @Slot()
@@ -299,7 +294,6 @@ class FocusController(QObject):
 
         self.status = Status.COLLECTING_REQSPEC
         # self.collectingDatas.append([])
-        self.reqGetSpectrum.emit()
 
     # ---------- ---------- #
     def exceptionHandling(self):
@@ -361,8 +355,6 @@ class FocusController(QObject):
         print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
 
-        self.reqGetSpectrum.emit()
-
     @Slot(np.ndarray)
     def onResGetSpectrum(self, intensities):
         METHOD = "9 ResGetSpectrum, "
@@ -378,7 +370,6 @@ class FocusController(QObject):
 
             if self.collectingTimeCount < COLLECTING_TIME:
                 self.status = Status.COLLECTING_REQSPEC
-                self.reqGetSpectrum.emit()
                 return
             print("")
 
@@ -420,7 +411,6 @@ class FocusController(QObject):
         self.tempSumOfIntensities += rightIntensities
 
         if self.measureCnt < self.measure:
-            QTimer.singleShot(self.measureInterval, self.reqGetSpectrum.emit)
             self.measureCnt += 1
             return
 

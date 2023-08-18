@@ -98,7 +98,6 @@ class FocusControllerExam(QObject):
         self.focusController.reqConnectDevice.connect(self.onReqConnectDevice)
         self.focusController.reqMoveStage.connect(self.onReqMoveStage)
         self.focusController.reqStopStage.connect(self.onReqStopStage)
-        self.focusController.reqGetSpectrum.connect(self.onReqGetSpectrum)
 
         # 포커스 컨트롤러 -> 일반 시그널
         self.focusController.normalLogSignal.connect(self.log_print)
@@ -324,12 +323,6 @@ class FocusControllerExam(QObject):
         if self.stage.isMoving(0):
             self.reqStopStage.emit(0)
             return
-
-    def onReqGetSpectrum(self):
-        self.spec.getSpectrum()
-        # intensities = self.spec.getSpectrum()
-        # average = np.mean(intensities[1])
-        # self.resGetSpectrum.emit(intensities)
 
     @Slot(np.ndarray)
     def onResGetSpectrum(self, spectrumInfo):
