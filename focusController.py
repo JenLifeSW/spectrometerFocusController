@@ -177,6 +177,7 @@ class FocusController(QObject):
         self.round = 0
 
         self.initRound(self.startPosition)
+        self.reqSetIntegrationTime.emit(IntegrationTime.NORMAL)
         self.reqMoveStage.emit(self.targetPosition)
 
         if self.testing:
@@ -348,9 +349,6 @@ class FocusController(QObject):
         if self.isPaused or not self.isRunning:
             self.reqSetIntegrationTime.emit(IntegrationTime.DETECTING)
             self.status = Status.DETECTING
-        else:   # 여기다 하면 반복 호출됨 수정 필요@@@@@@@@@@@@@@@@@@@@@@@@@@
-            if not (self.status == Status.IDLE or self.status == Status.DETECTING):
-                self.reqSetIntegrationTime.emit(IntegrationTime.NORMAL)
 
         print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
