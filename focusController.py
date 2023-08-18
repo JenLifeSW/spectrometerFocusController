@@ -116,6 +116,7 @@ class FocusController(QObject):
     errCnt = 0
     # lastCommand = 0
     status = Status.DEFAULT
+    admitSpectrum = False
 
     isRunning = False
     isPaused = False
@@ -353,6 +354,7 @@ class FocusController(QObject):
 
         print(f"{TAG}{METHOD}status: {Status.get_name(self.status)} position: {position}")
         self.arrivePosition = position
+        QTimer.singleShot(int(IntegrationTime.NORMAL * 0.7), self.setAdmitSpectrum)
 
     @Slot(np.ndarray)
     def onResGetSpectrum(self, intensities):
@@ -404,6 +406,9 @@ class FocusController(QObject):
             self.status = Status.IDLE
             return
 
+        if not self.admitSpectrum:
+            return
+
         rightIntensities = np.mean(intensities[1][36:])
         self.measuredSignal.emit(self.pointCnt + 1, self.targetPointCnt[self.round], self.round)
 
@@ -422,6 +427,7 @@ class FocusController(QObject):
             self.targetPosition = position + self.step[self.round]
             print(f"{TAG}{METHOD}next targetPosition: {self.targetPosition}")
 
+            self.setAdmitSpectrum(False)
             self.reqMoveStage.emit(self.targetPosition)
             return
 
@@ -442,6 +448,7 @@ class FocusController(QObject):
                 self.round += 1
                 self.initRound(targetPosition)
                 self.normalLogSignal.emit(f"{TAG}{METHOD}round complete. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
+                self.setAdmitSpectrum(False)
                 self.reqMoveStage.emit(self.targetPosition)
                 return
 
@@ -450,6 +457,7 @@ class FocusController(QObject):
                     self.round += 1
                     self.initRound(self.startPosition)
                     self.normalLogSignal.emit(f"{TAG}{METHOD}First is Max. 다음 라운드 측정 진행. reqMoveStage to {self.targetPosition}")
+                    self.setAdmitSpectrum(False)
                     self.reqMoveStage.emit(self.targetPosition)
                     return
 
@@ -457,15 +465,18 @@ class FocusController(QObject):
                     self.normalLogSignal.emit(f"{TAG}{METHOD}End is Max. 현재 라운드 측정 유지. reqMoveStage to {self.targetPosition}")
                     targetPosition = position - 2 * self.step[0]
                     self.initRound(targetPosition)
+                    self.setAdmitSpectrum(False)
                     self.reqMoveStage.emit(self.targetPosition)
                     return
 
+            self.setAdmitSpectrum(False)
             self.exceptionHandling()
             return
 
         else:
             self.status = Status.FOCUS_COMPLETING
             targetPosition = round(self.roundData[maxIdx][0], 3)
+            self.setAdmitSpectrum(False)
             self.reqMoveStage.emit(targetPosition)
 
     @Slot(float, float)
@@ -512,3 +523,7 @@ class FocusController(QObject):
     @Slot()
     def onResStopStage(self):
         print(f"{TAG}11 onResStopStage")
+
+    @Slot()
+    def setAdmitSpectrum(self, admit=True):
+        self.admitSpectrum = admit
