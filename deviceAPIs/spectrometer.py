@@ -15,14 +15,14 @@ class Spectrometer(QThread):
     resGetSpectrum = Signal(np.ndarray)
     ramanSignal = Signal(list)
 
-    def __init__(self, isVirtual=False, signalInterval=1000):
+    def __init__(self, isVirtual=False, integrationTime=1000000):
         super().__init__()
         try:
             self.spec = st.Spectrometer.from_first_available() if isVirtual else sb.Spectrometer.from_first_available()
             self.timer = QTimer()
             self.timer.timeout.connect(self.getSpectrum)
-            self.timer.start(signalInterval)
-            self.setIntegrationTime(100000)
+            self.timer.start(int(integrationTime / 1000))
+            self.setIntegrationTime(integrationTime)
             self.isConnected = True
             self.isProcessing = False
             self.connectedSignal.emit(True)
