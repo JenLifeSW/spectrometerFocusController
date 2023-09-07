@@ -253,11 +253,11 @@ class FocusController(QObject):
         print(f"{TAG}6 restartFocusing")
         # self.lastCommand = Command.RESTART
         self.status = Status.RESTARTING
-        if self.isPaused:
-            self.isPaused = False
-            self.conReqCnt = 0
-            self.reqDeviceConnected.emit()
-            return
+        # if self.isPaused:
+        #     self.isPaused = False
+        #     self.conReqCnt = 0
+        #     self.reqDeviceConnected.emit()
+        #     return
 
         self.isPaused = True
         self.initFocusing(True)
