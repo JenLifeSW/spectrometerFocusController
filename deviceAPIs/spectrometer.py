@@ -52,6 +52,10 @@ class Spectrometer(QThread):
         self.isProcessing = True
         info = self.spec.spectrum()
         self.isProcessing = False
+
+        laserWavelength = 632.8
+        ramanShift = (1 / laserWavelength - 1 / info[0]) * (10 ** 7)
+        info[0] = ramanShift
         self.resGetSpectrum.emit(info)
 
     def stopGetSpectrum(self):
